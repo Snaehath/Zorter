@@ -29,6 +29,7 @@ interface OrganizeScreenProps {
   isUndoAvailable: boolean;
   isAnalyzing: boolean;
   onRunAnalysis: () => void;
+  onRunFastHeuristic: () => void;
 }
 
 export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
@@ -40,6 +41,7 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
   isUndoAvailable,
   isAnalyzing,
   onRunAnalysis,
+  onRunFastHeuristic,
 }) => {
   const [namingConvention, setNamingConvention] = useState<string>('subject_scene');
   const [organizationBehavior, setOrganizationBehavior] = useState<string>('by_category');
@@ -165,22 +167,34 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
               Change Folder
             </button>
 
-            {/* Main AI Analysis Button */}
+            {/* Instant Fast Auto-Name (0s / Heuristic / Embedded Prompts) */}
+            <button
+              onClick={onRunFastHeuristic}
+              disabled={isAnalyzing || files.length === 0}
+              title="Reads embedded PNG generation prompts (Flux, ComfyUI, Automatic1111) and smart heuristics in 0s without waiting on AI"
+              className="px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/20"
+            >
+              <Zap className="w-4 h-4 text-emerald-200" />
+              Instant Auto-Name (0s)
+            </button>
+
+            {/* Deep AI Vision Analysis Button */}
             <button
               onClick={handleAnalyzeAndPlan}
               disabled={isAnalyzing || files.length === 0}
-              className={`px-5 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              title="Full visual image inspection with local Ollama vision model (~2-3s per image)"
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
                 isAnalyzing
                   ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 animate-pulse'
                   : 'bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white shadow-lg shadow-indigo-600/25'
               }`}
             >
-              <Zap className="w-4 h-4 text-cyan-300" />
+              <Brain className="w-4 h-4 text-cyan-300" />
               {isAnalyzing
                 ? 'AI Analyzing in Background...'
                 : unanalyzedCount > 0
-                ? `Run AI Analysis (${unanalyzedCount} Files)`
-                : 'Re-Analyze All with AI'}
+                ? `Deep AI Vision (${unanalyzedCount})`
+                : 'Re-Analyze with AI'}
             </button>
 
             <button
@@ -237,26 +251,36 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
 
       {/* Prominent Notice if Unanalyzed Files Exist */}
       {unanalyzedCount > 0 && (
-        <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+        <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-lg">
           <div className="flex items-center gap-2.5">
             <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
             <div>
               <span className="font-semibold text-white">
-                {unanalyzedCount} file(s) have not been analyzed by AI yet.
+                {unanalyzedCount} file(s) have not been analyzed yet.
               </span>
               <p className="text-[11px] text-amber-300/80 mt-0.5">
-                Without AI analysis, files keep their original name. Click "Run AI Analysis" so Ollama can look at the images and rename them to descriptive names like <em>egypt_pyramids</em>, <em>waterfalls</em>, <em>forest</em>, etc.
+                Without analysis, files keep their original name. Choose <strong>Instant (0s)</strong> to immediately extract embedded prompts/metadata, or <strong>Deep AI</strong> to let Ollama inspect each image visually.
               </p>
             </div>
           </div>
-          <button
-            onClick={handleAnalyzeAndPlan}
-            disabled={isAnalyzing}
-            className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition shrink-0 cursor-pointer flex items-center gap-1.5 shadow"
-          >
-            <Brain className="w-3.5 h-3.5" />
-            {isAnalyzing ? 'Analyzing...' : 'Run AI Analysis Now'}
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={onRunFastHeuristic}
+              disabled={isAnalyzing}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition cursor-pointer flex items-center gap-1.5 shadow"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              Instant (0s)
+            </button>
+            <button
+              onClick={handleAnalyzeAndPlan}
+              disabled={isAnalyzing}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition cursor-pointer flex items-center gap-1.5 shadow"
+            >
+              <Brain className="w-3.5 h-3.5" />
+              {isAnalyzing ? 'Analyzing...' : 'Deep AI Vision'}
+            </button>
+          </div>
         </div>
       )}
 

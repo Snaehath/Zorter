@@ -119,7 +119,11 @@ impl VisionProvider for OllamaClient {
             "system": VISION_SYSTEM_PROMPT,
             "images": [image_base64],
             "stream": false,
-            "format": "json"
+            "format": "json",
+            "options": {
+                "num_predict": 180,
+                "temperature": 0.1
+            }
         });
 
         let resp = self

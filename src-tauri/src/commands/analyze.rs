@@ -1,9 +1,11 @@
+use std::path::Path;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::ai::provider::ModelInfo;
 use crate::core::app_state::AppState;
 use crate::core::errors::{AppError, Result};
 use crate::core::events::{AnalyzeCompletedEvent, AnalyzeProgressEvent};
+use crate::filesystem::metadata_extractor::extract_png_metadata;
 use crate::storage::repository::{FileAnalysis, IndexedFile};
 
 #[tauri::command]
@@ -18,6 +20,137 @@ pub async fn get_file_analysis(
 ) -> Result<Option<FileAnalysis>> {
     let repo = state.repository.lock().unwrap();
     Ok(repo.get_analysis(&file_id))
+}
+
+/// Instant heuristic analyzer (0ms, no waiting on LLMs):
+/// Reads embedded PNG generation metadata (Flux, ComfyUI, Stable Diffusion, etc.)
+/// and filename cues to generate instant subject, category, and names.
+#[tauri::command]
+pub async fn fast_heuristic_analyze(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<Vec<FileAnalysis>> {
+    let (settings, files_to_process) = {
+        let repo = state.repository.lock().unwrap();
+        let settings = repo.get_settings();
+        let all_files = repo.get_all_files();
+        (settings, all_files)
+    };
+
+    let total = files_to_process.len();
+    let mut completed = Vec::new();
+    let mut embeddings_to_save = Vec::new();
+
+    for (idx, file) in files_to_process.iter().enumerate() {
+        let path = Path::new(&file.current_path);
+        let meta = extract_png_metadata(path);
+
+        let mut subjects = meta.detected_keywords;
+        if subjects.is_empty() {
+            // Extract from cleaned filename
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .replace('_', " ")
+                .replace('-', " ");
+            for word in stem.split_whitespace() {
+                let clean = word.to_lowercase();
+                if clean.len() > 3
+                    && clean != "gemini"
+                    && clean != "generated"
+                    && clean != "image"
+                    && clean != "wallpaper"
+                    && clean != "flux"
+                {
+                    subjects.push(clean);
+                }
+            }
+        }
+
+        let primary_subject = subjects.first().cloned().unwrap_or_else(|| "wallpaper".to_string());
+        let category = match primary_subject.as_str() {
+            "waterfall" | "waterfalls" | "forest" | "mountain" | "mountains" | "desert" | "river" | "ocean" | "beach" => "Nature",
+            "pyramid" | "pyramids" | "egypt" | "castle" | "city" => "Architecture",
+            "lion" | "tiger" | "wolf" | "dragon" => "Animals",
+            "cyberpunk" | "space" | "galaxy" | "planet" | "futuristic" => "Sci-Fi",
+            _ => "Wallpapers",
+        }.to_string();
+
+        let subcategory = primary_subject
+            .chars()
+            .next()
+            .map(|f| f.to_uppercase().to_string() + &primary_subject[1..])
+            .unwrap_or_else(|| "General".to_string());
+
+        let suggested_filename = if subjects.len() >= 2 {
+            format!("{}_{}.png", subjects[0], subjects[1])
+        } else {
+            format!("{}.png", primary_subject)
+        };
+
+        let description = if let Some(prompt) = meta.embedded_prompt {
+            prompt
+        } else {
+            format!("Image featuring {}", primary_subject)
+        };
+
+        let analysis = FileAnalysis {
+            file_id: file.id.clone(),
+            description: description.clone(),
+            subject: subjects,
+            category,
+            subcategory,
+            tags: vec![primary_subject],
+            visual_style: "Digital".to_string(),
+            environment: None,
+            lighting: None,
+            colors: Vec::new(),
+            orientation: None,
+            suggested_filename,
+            model: "fast-heuristic".to_string(),
+            analyzed_at: chrono::Utc::now().to_rfc3339(),
+        };
+
+        completed.push(analysis.clone());
+
+        // Fast vector embedding
+        if let Ok(vec) = state
+            .embedding_coordinator
+            .generate_analysis_embedding(&settings.preferred_embedding_model, &analysis)
+        {
+            embeddings_to_save.push((file.id.clone(), vec));
+        }
+
+        let _ = app_handle.emit(
+            "analyze:progress",
+            AnalyzeProgressEvent {
+                current: idx + 1,
+                total,
+                file_name: file.current_name.clone(),
+                status: "Instant metadata analysis".to_string(),
+            },
+        );
+    }
+
+    {
+        let mut repo = state.repository.lock().unwrap();
+        repo.save_analyses(&completed)?;
+        if !embeddings_to_save.is_empty() {
+            let dims = embeddings_to_save[0].1.len();
+            let _ = repo.save_embeddings(&settings.preferred_embedding_model, dims, &embeddings_to_save);
+        }
+    }
+
+    let _ = app_handle.emit(
+        "analyze:completed",
+        AnalyzeCompletedEvent {
+            total_analyzed: completed.len(),
+            failed: 0,
+        },
+    );
+
+    Ok(completed)
 }
 
 #[tauri::command]

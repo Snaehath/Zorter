@@ -134,6 +134,19 @@ export function App() {
     }
   };
 
+  const handleRunFastHeuristic = async () => {
+    setIsAnalyzing(true);
+    try {
+      await api.fastHeuristicAnalyze();
+      await loadData();
+    } catch (e) {
+      console.error('Fast heuristic analysis error', e);
+    } finally {
+      setIsAnalyzing(false);
+      setAnalyzeProgress(null);
+    }
+  };
+
   const handleUndoLast = async () => {
     try {
       await api.undoLastOperation();
@@ -189,6 +202,7 @@ export function App() {
             isUndoAvailable={hasUndoAvailable}
             isAnalyzing={isAnalyzing}
             onRunAnalysis={handleRunAnalysis}
+            onRunFastHeuristic={handleRunFastHeuristic}
           />
         )}
 

@@ -44,6 +44,10 @@ export const api = {
     return invoke<FileAnalysis[]>('analyze_files', { fileIds });
   },
 
+  fastHeuristicAnalyze: async (): Promise<FileAnalysis[]> => {
+    return invoke<FileAnalysis[]>('fast_heuristic_analyze');
+  },
+
   // Organization
   planOrganization: async (
     targetDir?: string,
