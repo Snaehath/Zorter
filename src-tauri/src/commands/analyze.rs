@@ -5,8 +5,15 @@ use crate::ai::provider::ModelInfo;
 use crate::core::app_state::AppState;
 use crate::core::errors::Result;
 use crate::core::events::{AnalyzeCompletedEvent, AnalyzeProgressEvent};
-use crate::filesystem::metadata_extractor::extract_png_metadata;
+use crate::filesystem::metadata_extractor::{extract_png_metadata, is_valid_filename_keyword};
 use crate::storage::repository::{FileAnalysis, IndexedFile};
+
+#[tauri::command]
+pub fn clear_analyses(state: State<'_, AppState>) -> Result<()> {
+    let mut repo = state.repository.lock().unwrap();
+    repo.clear_all_analyses()?;
+    Ok(())
+}
 
 #[tauri::command]
 pub async fn list_available_models(state: State<'_, AppState>) -> Result<Vec<ModelInfo>> {
@@ -70,7 +77,7 @@ pub async fn fast_heuristic_analyze(
 
         let mut subjects = meta.detected_keywords;
         if subjects.is_empty() {
-            // Extract from cleaned filename
+            // Extract from cleaned filename using the validator
             let stem = path
                 .file_stem()
                 .and_then(|s| s.to_str())
@@ -78,17 +85,25 @@ pub async fn fast_heuristic_analyze(
                 .replace('_', " ")
                 .replace('-', " ");
             for word in stem.split_whitespace() {
-                let clean = word.to_lowercase();
-                if clean.len() > 3
-                    && clean != "gemini"
-                    && clean != "generated"
-                    && clean != "image"
-                    && clean != "wallpaper"
-                    && clean != "flux"
-                {
-                    subjects.push(clean);
+                if is_valid_filename_keyword(word) {
+                    subjects.push(word.to_lowercase());
                 }
             }
+        }
+
+        // If no embedded prompt AND no valid semantic words could be extracted,
+        // DO NOT create a fake analysis with random hashes. Leave it unanalyzed so Deep AI Vision inspects it!
+        if subjects.is_empty() && meta.embedded_prompt.is_none() {
+            let _ = app_handle.emit(
+                "analyze:progress",
+                AnalyzeProgressEvent {
+                    current: idx + 1,
+                    total,
+                    file_name: file.current_name.clone(),
+                    status: "Skipped (no prompt in file, needs Deep AI Vision)".to_string(),
+                },
+            );
+            continue;
         }
 
         let primary_subject = subjects.first().cloned().unwrap_or_else(|| "wallpaper".to_string());
@@ -188,10 +203,19 @@ pub async fn analyze_files(
                 let id_set: std::collections::HashSet<String> = ids.into_iter().collect();
                 all_files.into_iter().filter(|f| id_set.contains(&f.id)).collect()
             }
-            None => all_files
-                .into_iter()
-                .filter(|f| !analyzed_ids.contains(&f.id))
-                .collect(),
+            None => {
+                let unanalyzed: Vec<IndexedFile> = all_files
+                    .iter()
+                    .filter(|f| !analyzed_ids.contains(&f.id))
+                    .cloned()
+                    .collect();
+                if unanalyzed.is_empty() {
+                    // All files already analyzed -> Re-analyze all files
+                    all_files
+                } else {
+                    unanalyzed
+                }
+            }
         };
 
         (settings, targets)

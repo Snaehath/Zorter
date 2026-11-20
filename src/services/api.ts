@@ -52,6 +52,10 @@ export const api = {
     return invoke<boolean>('cancel_analysis');
   },
 
+  clearAnalyses: async (): Promise<void> => {
+    return invoke<void>('clear_analyses');
+  },
+
   // Organization
   planOrganization: async (
     targetDir?: string,

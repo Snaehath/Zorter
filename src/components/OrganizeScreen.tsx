@@ -30,9 +30,10 @@ interface OrganizeScreenProps {
   isUndoAvailable: boolean;
   isAnalyzing: boolean;
   analyzeProgress: AnalyzeProgressEvent | null;
-  onRunAnalysis: () => void;
+  onRunAnalysis: (fileIds?: string[]) => void;
   onRunFastHeuristic: () => void;
   onCancelAnalysis: () => void;
+  onClearAnalyses: () => void;
 }
 
 export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
@@ -47,6 +48,7 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
   onRunAnalysis,
   onRunFastHeuristic,
   onCancelAnalysis,
+  onClearAnalyses,
 }) => {
   const [namingConvention, setNamingConvention] = useState<string>('subject_scene');
   const [organizationBehavior, setOrganizationBehavior] = useState<string>('by_category');
@@ -88,8 +90,16 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
   const handleAnalyzeAndPlan = async () => {
     setErrorMessage(null);
     setExecutionMessage(null);
-    // 1. Run analysis
-    onRunAnalysis();
+    // Explicitly pass all file IDs so it forces visual AI inspection of every file
+    const allIds = files.map((f) => f.id);
+    onRunAnalysis(allIds);
+  };
+
+  const handleClearAndReset = async () => {
+    setErrorMessage(null);
+    setExecutionMessage(null);
+    onClearAnalyses();
+    setPlan(null);
   };
 
   const toggleItem = (fileId: string) => {
@@ -259,6 +269,17 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
               <Sparkles className="w-3.5 h-3.5" />
               {isPlanning ? 'Generating Plan...' : 'Generate Plan'}
             </button>
+
+            {analyzedCount > 0 && (
+              <button
+                onClick={handleClearAndReset}
+                disabled={isAnalyzing}
+                className="px-3 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 border border-slate-800 hover:border-rose-500/30 transition flex items-center gap-1.5 cursor-pointer"
+                title="Clear current tags & analyses and start fresh"
+              >
+                Reset
+              </button>
+            )}
 
             {isUndoAvailable && (
               <button

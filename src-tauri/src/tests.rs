@@ -207,4 +207,26 @@ mod tests {
         assert_eq!(dups[0].files.len(), 2);
         assert_eq!(dups[0].wasted_bytes, 1000);
     }
+
+    #[test]
+    fn test_filename_hash_rejection() {
+        use crate::filesystem::metadata_extractor::is_valid_filename_keyword;
+        // Gibberish hashes should be rejected
+        assert!(!is_valid_filename_keyword("ephnhkephnhkephn"));
+        assert!(!is_valid_filename_keyword("tvydfetvydfetvyd"));
+        assert!(!is_valid_filename_keyword("44qy1744qy1744qy"));
+        assert!(!is_valid_filename_keyword("a0ujc9a0ujc9a0uj"));
+        assert!(!is_valid_filename_keyword("gemini"));
+        assert!(!is_valid_filename_keyword("generated"));
+        assert!(!is_valid_filename_keyword("image"));
+
+        // Valid keywords should be accepted
+        assert!(is_valid_filename_keyword("waterfall"));
+        assert!(is_valid_filename_keyword("forest"));
+        assert!(is_valid_filename_keyword("egypt"));
+        assert!(is_valid_filename_keyword("greek"));
+        assert!(is_valid_filename_keyword("world"));
+        assert!(is_valid_filename_keyword("pyramid"));
+        assert!(is_valid_filename_keyword("paris"));
+    }
 }

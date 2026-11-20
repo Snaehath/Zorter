@@ -130,3 +130,62 @@ pub fn extract_keywords_from_prompt(prompt: &str) -> Vec<String> {
 
     found
 }
+
+pub fn is_valid_filename_keyword(word: &str) -> bool {
+    let lower = word.to_lowercase();
+    if lower.len() < 3 || lower.len() > 24 {
+        return false;
+    }
+
+    // Blacklist AI generator prefix & boilerplate terms
+    let blacklist = [
+        "gemini", "generated", "image", "wallpaper", "wallpapers", "flux",
+        "desktop", "screenshot", "download", "img", "photo", "picture", "file",
+        "blueprint", "artwork"
+    ];
+    if blacklist.contains(&lower.as_str()) {
+        return false;
+    }
+
+    // Must contain vowels
+    let has_vowel = lower.chars().any(|c| matches!(c, 'a' | 'e' | 'i' | 'o' | 'u' | 'y'));
+    if !has_vowel {
+        return false;
+    }
+
+    // Reject alphanumeric hash mixes (e.g. 44qyl7, a0ujc9, 6de2888c)
+    let has_digit = lower.chars().any(|c| c.is_ascii_digit());
+    let has_alpha = lower.chars().any(|c| c.is_ascii_alphabetic());
+    if has_digit && has_alpha {
+        return false;
+    }
+
+    // Reject pure digits
+    if has_digit && !has_alpha {
+        return false;
+    }
+
+    // Reject repetitive hash patterns (e.g. ephnhkephnhkephn, tvydfetvydfetvyd)
+    if lower.len() >= 8 {
+        for block_len in 3..=8 {
+            if lower.len() >= block_len * 2 && lower[..block_len] == lower[block_len..block_len * 2] {
+                return false;
+            }
+        }
+    }
+
+    // Reject excessive consonant clusters >= 5 in a row (e.g. phnhk)
+    let mut consonant_count = 0;
+    for c in lower.chars() {
+        if matches!(c, 'a' | 'e' | 'i' | 'o' | 'u' | 'y') {
+            consonant_count = 0;
+        } else if c.is_alphabetic() {
+            consonant_count += 1;
+            if consonant_count >= 5 {
+                return false;
+            }
+        }
+    }
+
+    true
+}

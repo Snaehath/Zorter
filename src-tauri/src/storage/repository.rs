@@ -24,9 +24,9 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            preferred_vision_model: "qwen3.5:4b".to_string(),
+            preferred_vision_model: "ministral-3:3b".to_string(),
             preferred_embedding_model: "embeddinggemma-2:270m".to_string(),
-            default_naming_convention: "clean_snake_case".to_string(),
+            default_naming_convention: "subject_scene".to_string(),
             default_organization_behavior: "by_category".to_string(),
             thumbnail_size: 256,
             inference_concurrency: 1, // RTX 3050 4GB VRAM safety
@@ -255,6 +255,17 @@ impl Repository {
         let index = AnalysisIndex {
             version: 1,
             analyses: self.analyses.values().cloned().collect(),
+        };
+        let path = self.base_dir.join("index").join("analysis.json");
+        write_json_atomic(&path, &index)?;
+        Ok(())
+    }
+
+    pub fn clear_all_analyses(&mut self) -> Result<()> {
+        self.analyses.clear();
+        let index = AnalysisIndex {
+            version: 1,
+            analyses: Vec::new(),
         };
         let path = self.base_dir.join("index").join("analysis.json");
         write_json_atomic(&path, &index)?;

@@ -121,16 +121,25 @@ export function App() {
     }
   };
 
-  const handleRunAnalysis = async () => {
+  const handleRunAnalysis = async (fileIds?: string[]) => {
     setIsAnalyzing(true);
     try {
-      await api.analyzeFiles();
+      await api.analyzeFiles(fileIds);
       await loadData();
     } catch (e) {
       console.error('Analysis error', e);
     } finally {
       setIsAnalyzing(false);
       setAnalyzeProgress(null);
+    }
+  };
+
+  const handleClearAnalyses = async () => {
+    try {
+      await api.clearAnalyses();
+      await loadData();
+    } catch (e) {
+      console.error('Clear analyses error', e);
     }
   };
 
@@ -214,6 +223,7 @@ export function App() {
             onRunAnalysis={handleRunAnalysis}
             onRunFastHeuristic={handleRunFastHeuristic}
             onCancelAnalysis={handleCancelAnalysis}
+            onClearAnalyses={handleClearAnalyses}
           />
         )}
 

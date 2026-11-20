@@ -115,13 +115,13 @@ impl VisionProvider for OllamaClient {
 
         let body = json!({
             "model": model,
-            "prompt": "Analyze this image and describe its subject, aesthetic style, category, lighting, colors, and environment in the requested JSON structure.",
+            "prompt": "Analyze this image and describe its subject, aesthetic style, category, lighting, colors, and environment in the requested JSON structure. Output strictly valid JSON immediately. Do not include internal thinking or reasoning.",
             "system": VISION_SYSTEM_PROMPT,
             "images": [image_base64],
             "stream": false,
             "format": "json",
             "options": {
-                "num_predict": 180,
+                "num_predict": 1024,
                 "temperature": 0.1
             }
         });
@@ -185,9 +185,16 @@ impl VisionProvider for OllamaClient {
 
         let subcategory = parsed
             .get("subcategory")
-            .and_then(|v| v.as_str())
-            .unwrap_or("General")
-            .to_string();
+            .and_then(|v| {
+                if let Some(s) = v.as_str() {
+                    Some(s.to_string())
+                } else if let Some(arr) = v.as_array() {
+                    arr.first().and_then(|item| item.as_str()).map(|s| s.to_string())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| "General".to_string());
 
         let style = parse_string_array(parsed.get("style"));
         let environment = parsed
@@ -207,8 +214,15 @@ impl VisionProvider for OllamaClient {
         let suggested_filename = parsed
             .get("suggested_filename")
             .and_then(|v| v.as_str())
-            .unwrap_or("image.png")
-            .to_string();
+            .map(|s| {
+                let clean = s.trim_end_matches(".json").replace(' ', "_");
+                if !clean.ends_with(".png") && !clean.ends_with(".jpg") && !clean.ends_with(".jpeg") {
+                    format!("{}.png", clean)
+                } else {
+                    clean
+                }
+            })
+            .unwrap_or_else(|| "image.png".to_string());
 
         Ok(VisionAnalysisResponse {
             description,
