@@ -43,28 +43,48 @@ mod tests {
 
     #[test]
     fn test_deterministic_naming() {
-        let analysis = FileAnalysis {
-            file_id: "test_1".to_string(),
-            description: "Futuristic city with neon lights at night".to_string(),
-            subject: vec!["city".to_string(), "skyscrapers".to_string()],
-            category: "Wallpapers".to_string(),
-            subcategory: "Sci-Fi".to_string(),
-            tags: vec!["cyberpunk".to_string(), "neon".to_string()],
-            visual_style: "Digital Art".to_string(),
-            environment: Some("urban".to_string()),
-            lighting: Some("neon".to_string()),
-            colors: vec!["blue".to_string(), "purple".to_string()],
+        let egypt_analysis = FileAnalysis {
+            file_id: "test_egypt".to_string(),
+            description: "Ancient Egyptian pyramids in Giza under the desert sun".to_string(),
+            subject: vec!["pyramids".to_string(), "egypt".to_string()],
+            category: "Architecture".to_string(),
+            subcategory: "Egypt".to_string(),
+            tags: vec!["historical".to_string(), "ancient".to_string()],
+            visual_style: "Photography".to_string(),
+            environment: Some("desert".to_string()),
+            lighting: Some("bright daylight".to_string()),
+            colors: vec!["gold".to_string(), "sand".to_string()],
             orientation: Some("landscape".to_string()),
-            suggested_filename: "cyberpunk_city.png".to_string(),
+            suggested_filename: "egypt_pyramids.png".to_string(),
             model: "qwen".to_string(),
             analyzed_at: "2026-11-20T12:00:00Z".to_string(),
         };
 
-        let snake = generate_deterministic_filename(&analysis, "png", "clean_snake_case");
-        assert_eq!(snake, "cyberpunk_city_neon_blue.png");
+        let name = generate_deterministic_filename(&egypt_analysis, "png", "subject_scene");
+        assert_eq!(name, "pyramids_egypt.png");
 
-        let kebab = generate_deterministic_filename(&analysis, "png", "kebab-case");
-        assert_eq!(kebab, "cyberpunk-city-neon-blue.png");
+        let waterfall_analysis = FileAnalysis {
+            file_id: "test_waterfall".to_string(),
+            description: "A cascade waterfall flowing through a dense lush forest".to_string(),
+            subject: vec!["waterfall".to_string()],
+            category: "Nature".to_string(),
+            subcategory: "Waterfalls".to_string(),
+            tags: vec!["nature".to_string()],
+            visual_style: "Photography".to_string(),
+            environment: Some("forest".to_string()),
+            lighting: Some("soft".to_string()),
+            colors: vec!["green".to_string(), "white".to_string()],
+            orientation: Some("portrait".to_string()),
+            suggested_filename: "forest_waterfall.png".to_string(),
+            model: "qwen".to_string(),
+            analyzed_at: "2026-11-20T12:00:00Z".to_string(),
+        };
+
+        let name2 = generate_deterministic_filename(&waterfall_analysis, "png", "subject_scene");
+        assert_eq!(name2, "waterfall_forest.png");
+
+        let kebab = generate_deterministic_filename(&waterfall_analysis, "png", "kebab-case");
+        assert_eq!(kebab, "waterfall-forest.png");
     }
 
     #[test]

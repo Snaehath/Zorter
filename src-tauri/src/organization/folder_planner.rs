@@ -18,6 +18,7 @@ pub struct PlanItemPreview {
     pub action_type: String,
     pub thumbnail_url: Option<String>,
     pub included: bool,
+    pub is_analyzed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,6 +26,7 @@ pub struct OrganizationPlan {
     pub items: Vec<PlanItemPreview>,
     pub total_files: usize,
     pub destination_root: String,
+    pub unanalyzed_count: usize,
 }
 
 pub fn create_organization_plan(
@@ -39,9 +41,14 @@ pub fn create_organization_plan(
 
     let mut items = Vec::new();
     let mut reserved_paths: HashSet<String> = HashSet::new();
+    let mut unanalyzed_count = 0;
 
     for file in files {
         let analysis_opt = analysis_map.get(&file.id);
+        let is_analyzed = analysis_opt.is_some();
+        if !is_analyzed {
+            unanalyzed_count += 1;
+        }
 
         let orig_path = Path::new(&file.current_path);
         let ext = orig_path
@@ -55,6 +62,7 @@ pub fn create_organization_plan(
             let name = generate_deterministic_filename(analysis, ext, naming_convention);
             (cat, subcat, name)
         } else {
+            // Unanalyzed file fallback: clean random hashes/numbers if present
             ("Uncategorized".to_string(), "General".to_string(), file.current_name.clone())
         };
 
@@ -111,6 +119,7 @@ pub fn create_organization_plan(
             action_type,
             thumbnail_url: file.thumbnail_url.clone(),
             included: true,
+            is_analyzed,
         });
     }
 
@@ -119,5 +128,6 @@ pub fn create_organization_plan(
         items,
         total_files,
         destination_root: target_root.to_string_lossy().to_string(),
+        unanalyzed_count,
     }
 }

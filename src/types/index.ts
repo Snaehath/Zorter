@@ -69,12 +69,14 @@ export interface PlanItemPreview {
   action_type: string;
   thumbnail_url?: string | null;
   included: boolean;
+  is_analyzed: boolean;
 }
 
 export interface OrganizationPlan {
   items: PlanItemPreview[];
   total_files: number;
   destination_root: string;
+  unanalyzed_count: number;
 }
 
 export interface FileOperationAction {

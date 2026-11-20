@@ -11,7 +11,7 @@ import {
   RotateCcw,
   CheckCircle2,
   AlertTriangle,
-  Play,
+  Zap,
 } from 'lucide-react';
 import type {
   FileAnalysis,
@@ -41,7 +41,7 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
   isAnalyzing,
   onRunAnalysis,
 }) => {
-  const [namingConvention, setNamingConvention] = useState<string>('clean_snake_case');
+  const [namingConvention, setNamingConvention] = useState<string>('subject_scene');
   const [organizationBehavior, setOrganizationBehavior] = useState<string>('by_category');
   const [plan, setPlan] = useState<OrganizationPlan | null>(null);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
@@ -55,6 +55,7 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
   analyses.forEach((a) => analysisMap.set(a.file_id, a));
 
   const analyzedCount = files.filter((f) => analysisMap.has(f.id)).length;
+  const unanalyzedCount = files.length - analyzedCount;
 
   const handleGeneratePlan = async () => {
     setIsPlanning(true);
@@ -75,6 +76,13 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
     } finally {
       setIsPlanning(false);
     }
+  };
+
+  const handleAnalyzeAndPlan = async () => {
+    setErrorMessage(null);
+    setExecutionMessage(null);
+    // 1. Run analysis
+    onRunAnalysis();
   };
 
   const toggleItem = (fileId: string) => {
@@ -141,7 +149,10 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
               Analyze & Organize
             </h2>
             <p className="text-xs text-slate-400 mt-1">
-              {files.length} files indexed • {analyzedCount} analyzed by local AI vision
+              {files.length} files indexed • <span className="text-emerald-400 font-semibold">{analyzedCount} analyzed</span>
+              {unanalyzedCount > 0 && (
+                <span className="text-amber-400 ml-1 font-semibold">({unanalyzedCount} waiting for AI analysis)</span>
+              )}
             </p>
           </div>
 
@@ -154,27 +165,28 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
               Change Folder
             </button>
 
+            {/* Main AI Analysis Button */}
             <button
-              onClick={onRunAnalysis}
+              onClick={handleAnalyzeAndPlan}
               disabled={isAnalyzing || files.length === 0}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 cursor-pointer ${
+              className={`px-5 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
                 isAnalyzing
                   ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 animate-pulse'
-                  : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg shadow-cyan-600/20'
+                  : 'bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white shadow-lg shadow-indigo-600/25'
               }`}
             >
-              <Brain className="w-3.5 h-3.5" />
+              <Zap className="w-4 h-4 text-cyan-300" />
               {isAnalyzing
                 ? 'AI Analyzing in Background...'
-                : analyzedCount < files.length
-                ? `Analyze Unindexed (${files.length - analyzedCount})`
-                : 'Re-Analyze All'}
+                : unanalyzedCount > 0
+                ? `Run AI Analysis (${unanalyzedCount} Files)`
+                : 'Re-Analyze All with AI'}
             </button>
 
             <button
               onClick={handleGeneratePlan}
               disabled={isPlanning || files.length === 0}
-              className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20 transition flex items-center gap-2 cursor-pointer"
+              className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20 transition flex items-center gap-2 cursor-pointer"
             >
               <Sparkles className="w-3.5 h-3.5" />
               {isPlanning ? 'Generating Plan...' : 'Generate Plan'}
@@ -192,18 +204,19 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
           </div>
         </div>
 
-        {/* Plan Configuration Options */}
+        {/* Naming Style & Folder Hierarchy Configuration */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-800/80 text-xs">
           <div className="space-y-1.5">
-            <label className="text-slate-400 font-medium">Naming Convention</label>
+            <label className="text-slate-400 font-medium">Naming Style (How files are renamed)</label>
             <select
               value={namingConvention}
               onChange={(e) => setNamingConvention(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500"
             >
-              <option value="clean_snake_case">clean_snake_case (e.g. cyberpunk_futuristic_city.png)</option>
-              <option value="kebab-case">kebab-case (e.g. cyberpunk-futuristic-city.png)</option>
-              <option value="title_case">Title_Case (e.g. Cyberpunk_Futuristic_City.png)</option>
+              <option value="subject_scene">Subject & Scene (e.g. egypt_pyramids, waterfalls, forest)</option>
+              <option value="ai_suggested">AI Suggested (e.g. egyptian_pyramids, autumn_forest)</option>
+              <option value="kebab-case">Kebab-case (e.g. egypt-pyramids, waterfalls, forest)</option>
+              <option value="title_case">Title_Case (e.g. Egypt_Pyramids, Waterfalls, Forest)</option>
             </select>
           </div>
 
@@ -214,13 +227,38 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
               onChange={(e) => setOrganizationBehavior(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500"
             >
-              <option value="by_category">By Category & Subcategory (Wallpapers/Sci-Fi/Cyberpunk/)</option>
+              <option value="by_category">By Category & Subcategory (Wallpapers/Nature/Waterfalls/)</option>
               <option value="category_and_style">By Category & Visual Style (Wallpapers/Digital Art/)</option>
-              <option value="flat_rename">Flat Rename in Same Directory (No Subfolders)</option>
+              <option value="flat_rename">Flat Rename in Current Directory (Keep in Same Folder)</option>
             </select>
           </div>
         </div>
       </div>
+
+      {/* Prominent Notice if Unanalyzed Files Exist */}
+      {unanalyzedCount > 0 && (
+        <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+            <div>
+              <span className="font-semibold text-white">
+                {unanalyzedCount} file(s) have not been analyzed by AI yet.
+              </span>
+              <p className="text-[11px] text-amber-300/80 mt-0.5">
+                Without AI analysis, files keep their original name. Click "Run AI Analysis" so Ollama can look at the images and rename them to descriptive names like <em>egypt_pyramids</em>, <em>waterfalls</em>, <em>forest</em>, etc.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleAnalyzeAndPlan}
+            disabled={isAnalyzing}
+            className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition shrink-0 cursor-pointer flex items-center gap-1.5 shadow"
+          >
+            <Brain className="w-3.5 h-3.5" />
+            {isAnalyzing ? 'Analyzing...' : 'Run AI Analysis Now'}
+          </button>
+        </div>
+      )}
 
       {/* Status Notifications */}
       {executionMessage && (
@@ -322,45 +360,49 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
                   <div className="flex-1 min-w-0 space-y-1.5">
                     {/* Filename Transformation */}
                     <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <span className="font-mono text-slate-400 line-through truncate max-w-xs">
+                      <span className="font-mono text-slate-400 line-through truncate max-w-xs" title={item.original_name}>
                         {item.original_name}
                       </span>
                       <ArrowRight className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                      <span className="font-mono font-semibold text-emerald-300 truncate max-w-sm">
+                      <span className="font-mono font-bold text-emerald-300 truncate max-w-sm" title={item.proposed_name}>
                         {item.proposed_name}
                       </span>
+                      {!item.is_analyzed && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          Needs AI Analysis
+                        </span>
+                      )}
                     </div>
 
                     {/* Destination Path */}
                     <div className="text-[11px] text-slate-400 flex items-center gap-1 font-mono truncate">
-                      <span className="text-slate-500">Target:</span>
+                      <span className="text-slate-500">Destination:</span>
                       <span className="text-slate-300 truncate">{item.proposed_destination_path}</span>
                     </div>
 
                     {/* Analysis Badges */}
-                    {analysis && (
+                    {analysis ? (
                       <div className="flex flex-wrap items-center gap-1.5 pt-1">
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                           {item.category} / {item.subcategory}
                         </span>
-                        {analysis.visual_style && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
-                            {analysis.visual_style}
-                          </span>
-                        )}
-                        {analysis.lighting && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
-                            {analysis.lighting}
-                          </span>
-                        )}
-                        {analysis.colors.slice(0, 2).map((col, idx) => (
+                        {analysis.subject.slice(0, 2).map((s, idx) => (
                           <span
                             key={idx}
-                            className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800/80 text-slate-400"
+                            className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800"
                           >
-                            {col}
+                            {s}
                           </span>
                         ))}
+                        {analysis.environment && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+                            {analysis.environment}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-slate-500 italic">
+                        Not analyzed yet. Click "Run AI Analysis" to extract subject, scene, and location.
                       </div>
                     )}
                   </div>
@@ -384,20 +426,22 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
           </div>
           <div className="max-w-md mx-auto space-y-1">
             <h3 className="text-sm font-semibold text-white">
-              Ready to Plan File Organization
+              Ready to Rename & Organize Images
             </h3>
             <p className="text-xs text-slate-400">
-              Select your preferred naming style and folder hierarchy above, then click{' '}
-              <span className="text-indigo-400 font-semibold">"Generate Plan"</span> to inspect proposed renames and destination directories before approving any filesystem changes.
+              Click <span className="text-cyan-400 font-semibold">"Run AI Analysis"</span> so local AI can understand the content of your images and generate names like <span className="text-emerald-300 font-medium">egypt_pyramids</span>, <span className="text-emerald-300 font-medium">waterfalls</span>, and <span className="text-emerald-300 font-medium">forest</span>.
             </p>
           </div>
-          <button
-            onClick={handleGeneratePlan}
-            className="px-5 py-2.5 rounded-xl font-semibold text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20 transition inline-flex items-center gap-2 cursor-pointer"
-          >
-            <Play className="w-3.5 h-3.5" />
-            Generate Organization Plan
-          </button>
+          <div className="flex items-center justify-center gap-3">
+            <button
+              onClick={handleAnalyzeAndPlan}
+              disabled={isAnalyzing || files.length === 0}
+              className="px-5 py-2.5 rounded-xl font-bold text-xs bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white shadow-lg shadow-indigo-600/20 transition inline-flex items-center gap-2 cursor-pointer"
+            >
+              <Zap className="w-3.5 h-3.5 text-cyan-300" />
+              {isAnalyzing ? 'Analyzing in Background...' : 'Run AI Analysis & Generate Plan'}
+            </button>
+          </div>
         </div>
       )}
     </div>
