@@ -143,19 +143,6 @@ export function App() {
     }
   };
 
-  const handleRunFastHeuristic = async () => {
-    setIsAnalyzing(true);
-    try {
-      await api.fastHeuristicAnalyze();
-      await loadData();
-    } catch (e) {
-      console.error('Fast heuristic analysis error', e);
-    } finally {
-      setIsAnalyzing(false);
-      setAnalyzeProgress(null);
-    }
-  };
-
   const handleCancelAnalysis = async () => {
     try {
       await api.cancelAnalysis();
@@ -221,7 +208,6 @@ export function App() {
             isAnalyzing={isAnalyzing}
             analyzeProgress={analyzeProgress}
             onRunAnalysis={handleRunAnalysis}
-            onRunFastHeuristic={handleRunFastHeuristic}
             onCancelAnalysis={handleCancelAnalysis}
             onClearAnalyses={handleClearAnalyses}
           />

@@ -24,17 +24,17 @@ impl VisionCoordinator {
         }
     }
 
-    /// Prepares image for local vision model: if dimensions exceed 1024x1024,
+    /// Prepares image for local vision model: if dimensions exceed 768x768,
     /// resize safely to conserve VRAM (crucial for RTX 3050 4GB laptop GPUs),
     /// and encode to standard base64 string.
     pub fn prepare_image_base64(&self, image_path: &Path) -> Result<String> {
         let img = image::open(image_path)
             .map_err(|e| AppError::Image(format!("Failed to open image for analysis: {}", e)))?;
 
-        // If greater than 1024 on any dimension, downscale with aspect ratio preserved
+        // If greater than 768 on any dimension, downscale with aspect ratio preserved
         let (w, h) = (img.width(), img.height());
-        let resized = if w > 1024 || h > 1024 {
-            img.resize(1024, 1024, FilterType::Triangle)
+        let resized = if w > 768 || h > 768 {
+            img.resize(768, 768, FilterType::Triangle)
         } else {
             img
         };
@@ -47,15 +47,11 @@ impl VisionCoordinator {
         Ok(STANDARD.encode(&buf))
     }
 
-    pub async fn analyze_file(
+    pub fn analyze_file_sync(
         &self,
         file: &IndexedFile,
         model: &str,
     ) -> Result<FileAnalysis> {
-        let _permit = self.concurrency_limit.acquire().await.map_err(|e| {
-            AppError::Generic(format!("Semaphore acquisition failed: {}", e))
-        })?;
-
         let path = Path::new(&file.current_path);
         let b64 = self.prepare_image_base64(path)?;
 
@@ -77,5 +73,17 @@ impl VisionCoordinator {
             model: model.to_string(),
             analyzed_at: Utc::now().to_rfc3339(),
         })
+    }
+
+    pub async fn analyze_file(
+        &self,
+        file: &IndexedFile,
+        model: &str,
+    ) -> Result<FileAnalysis> {
+        let _permit = self.concurrency_limit.acquire().await.map_err(|e| {
+            AppError::Generic(format!("Semaphore acquisition failed: {}", e))
+        })?;
+
+        self.analyze_file_sync(file, model)
     }
 }

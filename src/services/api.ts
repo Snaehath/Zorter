@@ -44,10 +44,6 @@ export const api = {
     return invoke<FileAnalysis[]>('analyze_files', { fileIds });
   },
 
-  fastHeuristicAnalyze: async (): Promise<FileAnalysis[]> => {
-    return invoke<FileAnalysis[]>('fast_heuristic_analyze');
-  },
-
   cancelAnalysis: async (): Promise<boolean> => {
     return invoke<boolean>('cancel_analysis');
   },

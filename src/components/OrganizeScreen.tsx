@@ -31,7 +31,6 @@ interface OrganizeScreenProps {
   isAnalyzing: boolean;
   analyzeProgress: AnalyzeProgressEvent | null;
   onRunAnalysis: (fileIds?: string[]) => void;
-  onRunFastHeuristic: () => void;
   onCancelAnalysis: () => void;
   onClearAnalyses: () => void;
 }
@@ -46,7 +45,6 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
   isAnalyzing,
   analyzeProgress,
   onRunAnalysis,
-  onRunFastHeuristic,
   onCancelAnalysis,
   onClearAnalyses,
 }) => {
@@ -225,39 +223,22 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
               Change Folder
             </button>
 
-            {/* Instant Fast Auto-Name (0s / Heuristic / Embedded Prompts) */}
-            <button
-              onClick={onRunFastHeuristic}
-              disabled={isAnalyzing || files.length === 0}
-              title="Reads embedded PNG generation prompts (Flux, ComfyUI, Automatic1111) and smart heuristics in 0s without waiting on AI"
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-                isAnalyzing && analyzeProgress?.status.includes('Instant')
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 animate-pulse'
-                  : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/20'
-              }`}
-            >
-              <Zap className="w-4 h-4 text-emerald-200" />
-              {isAnalyzing && analyzeProgress?.status.includes('Instant')
-                ? 'Extracting Prompts...'
-                : 'Instant Auto-Name (0s)'}
-            </button>
-
             {/* Deep AI Vision Analysis Button */}
             <button
               onClick={handleAnalyzeAndPlan}
               disabled={isAnalyzing || files.length === 0}
-              title="Full visual image inspection with local Ollama vision model (~2-3s per image)"
+              title="Full visual image inspection with local Ollama vision model (~1.5s per image)"
               className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-                isAnalyzing && !analyzeProgress?.status.includes('Instant')
+                isAnalyzing
                   ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 animate-pulse'
                   : 'bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white shadow-lg shadow-indigo-600/25'
               }`}
             >
               <Brain className="w-4 h-4 text-cyan-300" />
-              {isAnalyzing && !analyzeProgress?.status.includes('Instant')
+              {isAnalyzing
                 ? 'AI Vision in Progress...'
                 : unanalyzedCount > 0
-                ? `Deep AI Vision (${unanalyzedCount})`
+                ? `Analyze Images (${unanalyzedCount})`
                 : 'Re-Analyze with AI'}
             </button>
 
@@ -331,29 +312,21 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
             <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
             <div>
               <span className="font-semibold text-white">
-                {unanalyzedCount} file(s) have not been analyzed yet.
+                {unanalyzedCount} file(s) waiting for AI vision analysis.
               </span>
               <p className="text-[11px] text-amber-300/80 mt-0.5">
-                Without analysis, files keep their original name. Choose <strong>Instant (0s)</strong> to immediately extract embedded prompts/metadata, or <strong>Deep AI</strong> to let Ollama inspect each image visually.
+                Run AI Vision to visually inspect scenes, identify subjects (e.g. <em>pyramids</em>, <em>waterfalls</em>, <em>forest</em>), and generate descriptive names.
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
-              onClick={onRunFastHeuristic}
-              disabled={isAnalyzing}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition cursor-pointer flex items-center gap-1.5 shadow"
-            >
-              <Zap className="w-3.5 h-3.5" />
-              Instant (0s)
-            </button>
-            <button
               onClick={handleAnalyzeAndPlan}
               disabled={isAnalyzing}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition cursor-pointer flex items-center gap-1.5 shadow"
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition cursor-pointer flex items-center gap-1.5 shadow"
             >
               <Brain className="w-3.5 h-3.5" />
-              {isAnalyzing ? 'Analyzing...' : 'Deep AI Vision'}
+              {isAnalyzing ? 'Analyzing...' : 'Run AI Vision'}
             </button>
           </div>
         </div>

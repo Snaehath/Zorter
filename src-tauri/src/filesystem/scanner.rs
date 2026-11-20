@@ -21,6 +21,7 @@ pub fn scan_directory<F>(
     dir_path: &Path,
     cache_dir: &Path,
     existing_files: &[IndexedFile],
+    generate_thumbs: bool,
     cancellation_flag: Option<&Arc<AtomicBool>>,
     on_progress: F,
 ) -> Result<Vec<IndexedFile>>
@@ -119,11 +120,13 @@ where
 
         let final_thumb_url = if thumb_url.is_some() {
             thumb_url
-        } else {
+        } else if generate_thumbs {
             match generate_thumbnail(path, cache_dir, &hash, 256) {
                 Ok(thumb_path) => thumbnail_to_data_url(&thumb_path).ok(),
                 Err(_) => None,
             }
+        } else {
+            None
         };
 
         scanned_files.push(IndexedFile {

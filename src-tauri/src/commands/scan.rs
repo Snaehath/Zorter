@@ -39,6 +39,7 @@ pub async fn scan_directory(
             &target_path,
             &cache_dir,
             &existing_files,
+            false,
             Some(&cancel_flag),
             |prog| {
                 let _ = handle_clone.emit(
