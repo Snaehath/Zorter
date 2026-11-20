@@ -1,0 +1,405 @@
+import React, { useState } from 'react';
+import {
+  Brain,
+  FolderTree,
+  CheckSquare,
+  Square,
+  ArrowRight,
+  FolderOpen,
+  Sparkles,
+  ShieldCheck,
+  RotateCcw,
+  CheckCircle2,
+  AlertTriangle,
+  Play,
+} from 'lucide-react';
+import type {
+  FileAnalysis,
+  IndexedFile,
+  OrganizationPlan,
+} from '../types';
+import { api } from '../services/api';
+
+interface OrganizeScreenProps {
+  files: IndexedFile[];
+  analyses: FileAnalysis[];
+  onSelectDirectory: () => void;
+  onRefreshData: () => void;
+  onUndoLast: () => void;
+  isUndoAvailable: boolean;
+  isAnalyzing: boolean;
+  onRunAnalysis: () => void;
+}
+
+export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
+  files,
+  analyses,
+  onSelectDirectory,
+  onRefreshData,
+  onUndoLast,
+  isUndoAvailable,
+  isAnalyzing,
+  onRunAnalysis,
+}) => {
+  const [namingConvention, setNamingConvention] = useState<string>('clean_snake_case');
+  const [organizationBehavior, setOrganizationBehavior] = useState<string>('by_category');
+  const [plan, setPlan] = useState<OrganizationPlan | null>(null);
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+  const [isPlanning, setIsPlanning] = useState(false);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [executionMessage, setExecutionMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Analysis lookup map
+  const analysisMap = new Map<string, FileAnalysis>();
+  analyses.forEach((a) => analysisMap.set(a.file_id, a));
+
+  const analyzedCount = files.filter((f) => analysisMap.has(f.id)).length;
+
+  const handleGeneratePlan = async () => {
+    setIsPlanning(true);
+    setErrorMessage(null);
+    setExecutionMessage(null);
+    try {
+      const generatedPlan = await api.planOrganization(
+        undefined,
+        namingConvention,
+        organizationBehavior
+      );
+      setPlan(generatedPlan);
+      // Default all items to selected
+      const allIds = new Set(generatedPlan.items.map((i) => i.file_id));
+      setSelectedItems(allIds);
+    } catch (e) {
+      setErrorMessage(`Failed to create organization plan: ${e}`);
+    } finally {
+      setIsPlanning(false);
+    }
+  };
+
+  const toggleItem = (fileId: string) => {
+    const updated = new Set(selectedItems);
+    if (updated.has(fileId)) {
+      updated.delete(fileId);
+    } else {
+      updated.add(fileId);
+    }
+    setSelectedItems(updated);
+  };
+
+  const selectAll = () => {
+    if (!plan) return;
+    setSelectedItems(new Set(plan.items.map((i) => i.file_id)));
+  };
+
+  const deselectAll = () => {
+    setSelectedItems(new Set());
+  };
+
+  const handleExecute = async () => {
+    if (!plan) return;
+    const itemsToExecute = plan.items.filter((i) => selectedItems.has(i.file_id));
+    if (itemsToExecute.length === 0) {
+      setErrorMessage('Please select at least one file to organize.');
+      return;
+    }
+
+    setIsExecuting(true);
+    setErrorMessage(null);
+    setExecutionMessage(null);
+
+    try {
+      const actions = itemsToExecute.map((item) => ({
+        file_id: item.file_id,
+        source_path: item.original_path,
+        destination_path: item.proposed_destination_path,
+        action_type: item.action_type,
+      }));
+
+      const result = await api.executeOrganization(actions);
+      setExecutionMessage(
+        `Successfully organized ${result.actions.length} files! Operation journal logged.`
+      );
+      setPlan(null);
+      setSelectedItems(new Set());
+      onRefreshData();
+    } catch (e) {
+      setErrorMessage(`Execution error: ${e}`);
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6 max-w-7xl mx-auto pb-16">
+      {/* Top Controls Bar */}
+      <div className="p-6 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-xl space-y-6">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold text-white flex items-center gap-2.5">
+              <FolderTree className="w-5 h-5 text-indigo-400" />
+              Analyze & Organize
+            </h2>
+            <p className="text-xs text-slate-400 mt-1">
+              {files.length} files indexed • {analyzedCount} analyzed by local AI vision
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={onSelectDirectory}
+              className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-2 cursor-pointer"
+            >
+              <FolderOpen className="w-3.5 h-3.5" />
+              Change Folder
+            </button>
+
+            <button
+              onClick={onRunAnalysis}
+              disabled={isAnalyzing || files.length === 0}
+              className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 cursor-pointer ${
+                isAnalyzing
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 animate-pulse'
+                  : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg shadow-cyan-600/20'
+              }`}
+            >
+              <Brain className="w-3.5 h-3.5" />
+              {isAnalyzing
+                ? 'AI Analyzing in Background...'
+                : analyzedCount < files.length
+                ? `Analyze Unindexed (${files.length - analyzedCount})`
+                : 'Re-Analyze All'}
+            </button>
+
+            <button
+              onClick={handleGeneratePlan}
+              disabled={isPlanning || files.length === 0}
+              className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20 transition flex items-center gap-2 cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              {isPlanning ? 'Generating Plan...' : 'Generate Plan'}
+            </button>
+
+            {isUndoAvailable && (
+              <button
+                onClick={onUndoLast}
+                className="px-3.5 py-2 rounded-xl text-xs font-medium bg-amber-500/10 text-amber-300 border border-amber-500/30 hover:bg-amber-500/20 transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Undo
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Plan Configuration Options */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-800/80 text-xs">
+          <div className="space-y-1.5">
+            <label className="text-slate-400 font-medium">Naming Convention</label>
+            <select
+              value={namingConvention}
+              onChange={(e) => setNamingConvention(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="clean_snake_case">clean_snake_case (e.g. cyberpunk_futuristic_city.png)</option>
+              <option value="kebab-case">kebab-case (e.g. cyberpunk-futuristic-city.png)</option>
+              <option value="title_case">Title_Case (e.g. Cyberpunk_Futuristic_City.png)</option>
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-slate-400 font-medium">Folder Organization Hierarchy</label>
+            <select
+              value={organizationBehavior}
+              onChange={(e) => setOrganizationBehavior(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="by_category">By Category & Subcategory (Wallpapers/Sci-Fi/Cyberpunk/)</option>
+              <option value="category_and_style">By Category & Visual Style (Wallpapers/Digital Art/)</option>
+              <option value="flat_rename">Flat Rename in Same Directory (No Subfolders)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Status Notifications */}
+      {executionMessage && (
+        <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{executionMessage}</span>
+        </div>
+      )}
+
+      {errorMessage && (
+        <div className="p-4 rounded-xl bg-red-950/40 border border-red-500/30 text-red-300 text-xs flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+          <span>{errorMessage}</span>
+        </div>
+      )}
+
+      {/* Plan Preview Section */}
+      {plan ? (
+        <div className="space-y-4">
+          {/* Action Ribbon */}
+          <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3 text-xs">
+              <span className="font-semibold text-white">
+                Proposed Plan: {plan.items.length} items
+              </span>
+              <span className="text-slate-500">•</span>
+              <span className="text-indigo-400 font-medium">
+                {selectedItems.size} selected for organization
+              </span>
+              <div className="flex items-center gap-1.5 ml-2">
+                <button
+                  onClick={selectAll}
+                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px]"
+                >
+                  Select All
+                </button>
+                <button
+                  onClick={deselectAll}
+                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px]"
+                >
+                  Deselect All
+                </button>
+              </div>
+            </div>
+
+            <button
+              onClick={handleExecute}
+              disabled={isExecuting || selectedItems.size === 0}
+              className="px-5 py-2.5 rounded-xl font-semibold text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 transition flex items-center gap-2 cursor-pointer"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              {isExecuting
+                ? 'Safely Executing...'
+                : `Approve & Organize (${selectedItems.size} Files)`}
+            </button>
+          </div>
+
+          {/* Plan Items List */}
+          <div className="grid grid-cols-1 gap-3">
+            {plan.items.map((item) => {
+              const analysis = analysisMap.get(item.file_id);
+              const isSelected = selectedItems.has(item.file_id);
+
+              return (
+                <div
+                  key={item.file_id}
+                  onClick={() => toggleItem(item.file_id)}
+                  className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col sm:flex-row items-start sm:items-center gap-4 ${
+                    isSelected
+                      ? 'bg-slate-900/90 border-indigo-500/40 shadow-lg shadow-indigo-950/20'
+                      : 'bg-slate-950/60 border-slate-800 opacity-60'
+                  }`}
+                >
+                  {/* Selection Checkbox */}
+                  <div className="shrink-0 text-indigo-400">
+                    {isSelected ? (
+                      <CheckSquare className="w-5 h-5 text-indigo-400" />
+                    ) : (
+                      <Square className="w-5 h-5 text-slate-600" />
+                    )}
+                  </div>
+
+                  {/* Thumbnail */}
+                  <div className="w-16 h-16 rounded-xl bg-slate-950 border border-slate-800 overflow-hidden shrink-0">
+                    {item.thumbnail_url ? (
+                      <img
+                        src={item.thumbnail_url}
+                        alt={item.original_name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-700 text-xs">
+                        IMG
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Comparison Details */}
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    {/* Filename Transformation */}
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="font-mono text-slate-400 line-through truncate max-w-xs">
+                        {item.original_name}
+                      </span>
+                      <ArrowRight className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                      <span className="font-mono font-semibold text-emerald-300 truncate max-w-sm">
+                        {item.proposed_name}
+                      </span>
+                    </div>
+
+                    {/* Destination Path */}
+                    <div className="text-[11px] text-slate-400 flex items-center gap-1 font-mono truncate">
+                      <span className="text-slate-500">Target:</span>
+                      <span className="text-slate-300 truncate">{item.proposed_destination_path}</span>
+                    </div>
+
+                    {/* Analysis Badges */}
+                    {analysis && (
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                          {item.category} / {item.subcategory}
+                        </span>
+                        {analysis.visual_style && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+                            {analysis.visual_style}
+                          </span>
+                        )}
+                        {analysis.lighting && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+                            {analysis.lighting}
+                          </span>
+                        )}
+                        {analysis.colors.slice(0, 2).map((col, idx) => (
+                          <span
+                            key={idx}
+                            className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800/80 text-slate-400"
+                          >
+                            {col}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Action Badge */}
+                  <div className="shrink-0 text-right">
+                    <span className="text-[10px] font-bold uppercase px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                      {item.action_type.replace('_', ' ')}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        /* Empty State / Initial View */
+        <div className="p-12 rounded-2xl bg-slate-900/40 border border-dashed border-slate-800 text-center space-y-4">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center mx-auto">
+            <Sparkles className="w-6 h-6" />
+          </div>
+          <div className="max-w-md mx-auto space-y-1">
+            <h3 className="text-sm font-semibold text-white">
+              Ready to Plan File Organization
+            </h3>
+            <p className="text-xs text-slate-400">
+              Select your preferred naming style and folder hierarchy above, then click{' '}
+              <span className="text-indigo-400 font-semibold">"Generate Plan"</span> to inspect proposed renames and destination directories before approving any filesystem changes.
+            </p>
+          </div>
+          <button
+            onClick={handleGeneratePlan}
+            className="px-5 py-2.5 rounded-xl font-semibold text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20 transition inline-flex items-center gap-2 cursor-pointer"
+          >
+            <Play className="w-3.5 h-3.5" />
+            Generate Organization Plan
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
