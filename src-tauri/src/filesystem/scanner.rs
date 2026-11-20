@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use walkdir::WalkDir;
-use uuid::Uuid;
 
 use crate::core::errors::{AppError, Result};
 use crate::filesystem::hashing::calculate_blake3_hash;
@@ -93,7 +92,6 @@ where
         // Check if we can reuse existing hash via incremental scanning strategy:
         // Compare path, size, and modified timestamp
         let mut blake3_hash = None;
-        let mut file_id = None;
         let mut original_name = metadata.name.clone();
         let mut original_path = path_str.clone();
         let mut thumb_url = None;
@@ -101,7 +99,6 @@ where
         if let Some(existing) = existing_map.get(&path_str) {
             if existing.size == metadata.size && existing.modified_ms == metadata.modified_ms {
                 blake3_hash = Some(existing.hash.clone());
-                file_id = Some(existing.id.clone());
                 original_name = existing.original_name.clone();
                 original_path = existing.original_path.clone();
                 thumb_url = existing.thumbnail_url.clone();
@@ -116,7 +113,7 @@ where
             },
         };
 
-        let id = file_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+        let id = format!("file_{}", &hash[..16]);
 
         let final_thumb_url = if thumb_url.is_some() {
             thumb_url

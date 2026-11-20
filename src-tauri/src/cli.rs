@@ -438,14 +438,16 @@ fn cmd_analyze(directory: &Path, model: &str, verbose: bool, endpoint: &str) -> 
         return Err(AppError::Ollama("Ollama offline".to_string()));
     }
 
+    let mut repo = Repository::new(None)?;
+    let existing_files = repo.get_all_files();
     let cache_dir = std::env::temp_dir().join("zorter_cache");
-    let files = scan_directory(directory, &cache_dir, &[], false, None, |_| {})?;
+    let files = scan_directory(directory, &cache_dir, &existing_files, false, None, |_| {})?;
     if files.is_empty() {
         println!("{}", "No supported images found to analyze.".yellow());
         return Ok(());
     }
+    let _ = repo.save_files(&files);
 
-    let mut repo = Repository::new(None)?;
     let existing_analyses = repo.get_all_analyses();
     let analyzed_map: HashMap<String, FileAnalysis> = existing_analyses
         .into_iter()
@@ -616,12 +618,12 @@ fn render_analysis_card(current: usize, total: usize, file: &IndexedFile, a: &Fi
 
 fn cmd_organize(
     directory: &Path,
-    model: &str,
+    _model: &str,
     style: &str,
     naming: &str,
     dry_run: bool,
     yes: bool,
-    endpoint: &str,
+    _endpoint: &str,
 ) -> Result<()> {
     println!();
     println!("{}", "🗂 ZORTER / ORGANIZATION PLAN".bold().cyan());
@@ -632,57 +634,39 @@ fn cmd_organize(
         return Err(AppError::Validation("Directory not found".to_string()));
     }
 
+    let mut repo = Repository::new(None)?;
+    let existing_files = repo.get_all_files();
     let cache_dir = std::env::temp_dir().join("zorter_cache");
-    let files = scan_directory(directory, &cache_dir, &[], false, None, |_| {})?;
+    let files = scan_directory(directory, &cache_dir, &existing_files, false, None, |_| {})?;
     if files.is_empty() {
         println!("{}", "No supported images found in directory.".yellow());
         return Ok(());
     }
+    let _ = repo.save_files(&files);
 
-    let mut repo = Repository::new(None)?;
     let mut analyses = repo.get_all_analyses();
-    let mut analysis_map: HashMap<String, FileAnalysis> =
+
+    // Map existing analyses to files by directory index if file_id doesn't match
+    let analysis_map: HashMap<String, FileAnalysis> =
         analyses.iter().map(|a| (a.file_id.clone(), a.clone())).collect();
 
-    // Check if any files require analysis before planning
-    let unanalyzed: Vec<&IndexedFile> = files.iter().filter(|f| !analysis_map.contains_key(&f.id)).collect();
-
-    if !unanalyzed.is_empty() {
-        println!(
-            "Analyzing {} files using {}...",
-            unanalyzed.len().to_string().yellow().bold(),
-            model.bold().cyan()
-        );
-        let ollama = Arc::new(OllamaClient::new(endpoint));
-        if !ollama.health_check().unwrap_or(false) {
-            eprintln!("{} Ollama is offline at {}. Run 'ollama serve' first.", "Error:".bold().red(), endpoint);
-            return Err(AppError::Ollama("Ollama offline".to_string()));
-        }
-        let vision_coord = VisionCoordinator::new(ollama, 1);
-        let pb = ProgressBar::new(unanalyzed.len() as u64);
-        pb.set_style(
-            ProgressStyle::default_bar()
-                .template("{spinner:.cyan} [{elapsed_precise}] [{bar:30.cyan/blue}] {pos}/{len} ({percent}%) {msg}")
-                .unwrap()
-                .progress_chars("██░"),
-        );
-
-        let mut newly_done = Vec::new();
-        for file in &unanalyzed {
-            pb.set_message(format!("{}", file.current_name));
-            if let Ok(a) = vision_coord.analyze_file_sync(file, model) {
-                let _ = repo.save_analyses(std::slice::from_ref(&a));
-                analysis_map.insert(file.id.clone(), a.clone());
-                newly_done.push(a);
+    // If analyses were stored with legacy UUIDs, migrate them to deterministic file IDs
+    let matched_count = files.iter().filter(|f| analysis_map.contains_key(&f.id)).count();
+    if matched_count == 0 && !analyses.is_empty() {
+        eprintln!("Migrating {} analyses to deterministic file IDs...", analyses.len());
+        analyses.sort_by(|a, b| a.analyzed_at.cmp(&b.analyzed_at));
+        for (i, a) in analyses.iter_mut().enumerate() {
+            if i < files.len() {
+                a.file_id = files[i].id.clone();
             }
-            pb.inc(1);
         }
-        pb.finish_and_clear();
+        let _ = repo.save_analyses(&analyses);
+    }
 
-        if !newly_done.is_empty() {
-            repo.save_analyses(&newly_done)?;
-            analyses.extend(newly_done);
-        }
+    if analyses.is_empty() {
+        println!("{}", "No files have been analyzed with AI vision yet.".yellow().bold());
+        println!("Please run analysis first: {}", format!("zorter analyze \"{}\"", directory.display()).bold().cyan());
+        return Ok(());
     }
 
     let org_behavior = if style == "flat" {
@@ -767,14 +751,14 @@ fn cmd_organize(
     }
 
     if yes {
-        apply_plan(&plan, &analyses, &mut repo)?;
+        apply_plan(&plan, &analyses, &mut repo, true)?;
         return Ok(());
     }
 
     let menu_options = vec![
-        "📁 Apply all suggested changes",
+        "📁 Apply suggested changes (organize analyzed files)",
         "🔍 Review individually",
-        "⚠️ Exclude uncertain files",
+        "📦 Include unanalyzed files into Needs-Review/",
         "💾 Export organization plan (JSON)",
         "✕  Cancel",
     ];
@@ -788,39 +772,40 @@ fn cmd_organize(
 
     match choice {
         Some(0) => {
-            apply_plan(&plan, &analyses, &mut repo)?;
+            apply_plan(&plan, &analyses, &mut repo, true)?;
         }
         Some(1) => {
             println!("\nDetailed File-by-File Breakdown:");
             for item in &plan.items {
-                println!(
-                    "  {} -> {}\n    Destination: {}",
-                    item.original_name.dimmed(),
-                    item.proposed_name.green().bold(),
-                    item.proposed_destination_path.cyan()
-                );
+                if item.is_analyzed {
+                    println!(
+                        "  {} -> {}\n    Destination: {}",
+                        item.original_name.dimmed(),
+                        item.proposed_name.green().bold(),
+                        item.proposed_destination_path.cyan()
+                    );
+                } else {
+                    println!(
+                        "  {} [Unanalyzed - will remain in place]",
+                        item.original_name.yellow()
+                    );
+                }
             }
             let confirm = Select::with_theme(&ColorfulTheme::default())
-                .with_prompt("Apply these changes now?")
+                .with_prompt("Apply changes to analyzed files now?")
                 .items(&["Yes, apply changes", "No, cancel"])
                 .default(0)
                 .interact_opt()
                 .map_err(|e| AppError::Validation(format!("Select error: {}", e)))?;
 
             if confirm == Some(0) {
-                apply_plan(&plan, &analyses, &mut repo)?;
+                apply_plan(&plan, &analyses, &mut repo, true)?;
             } else {
                 println!("{}", "Operation cancelled.".yellow());
             }
         }
         Some(2) => {
-            let filtered_plan = zorter_lib::organization::folder_planner::OrganizationPlan {
-                items: plan.items.into_iter().filter(|i| i.is_analyzed && !i.category.eq_ignore_ascii_case("Needs-Review")).collect(),
-                total_files: plan.total_files,
-                destination_root: plan.destination_root,
-                unanalyzed_count: 0,
-            };
-            apply_plan(&filtered_plan, &analyses, &mut repo)?;
+            apply_plan(&plan, &analyses, &mut repo, false)?;
         }
         Some(3) => {
             let json = serde_json::to_string_pretty(&plan).unwrap_or_default();
@@ -840,10 +825,12 @@ fn apply_plan(
     plan: &zorter_lib::organization::folder_planner::OrganizationPlan,
     analyses: &[FileAnalysis],
     repo: &mut Repository,
+    only_analyzed: bool,
 ) -> Result<()> {
     let actions: Vec<FileOperationAction> = plan
         .items
         .iter()
+        .filter(|item| !only_analyzed || (item.is_analyzed && !item.category.eq_ignore_ascii_case("Needs-Review")))
         .map(|item| FileOperationAction {
             file_id: item.file_id.clone(),
             source_path: item.original_path.clone(),
@@ -851,6 +838,11 @@ fn apply_plan(
             action_type: item.action_type.clone(),
         })
         .collect();
+
+    if actions.is_empty() {
+        println!("{}", "No eligible files to organize.".yellow());
+        return Ok(());
+    }
 
     let journal_entry = execute_file_operations(&actions)?;
 

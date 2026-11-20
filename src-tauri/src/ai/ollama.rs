@@ -154,7 +154,15 @@ impl VisionProvider for OllamaClient {
         // Parse structured JSON output
         let parsed: Value = serde_json::from_str(response_text)
             .or_else(|_| {
-                // If wrapped in markdown code fence, strip it
+                // If wrapped in markdown code fence or has text around it, find { and }
+                if let (Some(start), Some(end)) = (response_text.find('{'), response_text.rfind('}')) {
+                    if start <= end {
+                        let json_slice = &response_text[start..=end];
+                        if let Ok(val) = serde_json::from_str(json_slice) {
+                            return Ok(val);
+                        }
+                    }
+                }
                 let cleaned = response_text
                     .trim()
                     .trim_start_matches("```json")
