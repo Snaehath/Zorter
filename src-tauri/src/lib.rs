@@ -32,6 +32,7 @@ pub fn run() {
             commands::analyze::get_file_analysis,
             commands::analyze::analyze_files,
             commands::analyze::fast_heuristic_analyze,
+            commands::analyze::cancel_analysis,
             // Organize commands
             commands::organize::plan_organization,
             commands::organize::execute_organization,

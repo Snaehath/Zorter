@@ -14,6 +14,7 @@ import {
   Zap,
 } from 'lucide-react';
 import type {
+  AnalyzeProgressEvent,
   FileAnalysis,
   IndexedFile,
   OrganizationPlan,
@@ -28,8 +29,10 @@ interface OrganizeScreenProps {
   onUndoLast: () => void;
   isUndoAvailable: boolean;
   isAnalyzing: boolean;
+  analyzeProgress: AnalyzeProgressEvent | null;
   onRunAnalysis: () => void;
   onRunFastHeuristic: () => void;
+  onCancelAnalysis: () => void;
 }
 
 export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
@@ -40,8 +43,10 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
   onUndoLast,
   isUndoAvailable,
   isAnalyzing,
+  analyzeProgress,
   onRunAnalysis,
   onRunFastHeuristic,
+  onCancelAnalysis,
 }) => {
   const [namingConvention, setNamingConvention] = useState<string>('subject_scene');
   const [organizationBehavior, setOrganizationBehavior] = useState<string>('by_category');
@@ -142,6 +147,49 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
+      {/* Active Analysis Progress Bar with Stop Control */}
+      {isAnalyzing && (
+        <div className="p-4 rounded-2xl bg-cyan-950/70 border border-cyan-500/40 shadow-xl shadow-cyan-950/50 flex flex-col gap-3">
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2 text-cyan-300 font-medium truncate max-w-[70%]">
+              <Brain className="w-4 h-4 text-cyan-400 shrink-0 animate-pulse" />
+              <span className="truncate">
+                {analyzeProgress?.status || 'Analyzing images'}:{' '}
+                <strong className="text-white">{analyzeProgress?.file_name || 'Processing...'}</strong>
+              </span>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <span className="font-mono text-cyan-200">
+                {analyzeProgress ? `${analyzeProgress.current} / ${analyzeProgress.total}` : 'In progress...'}
+                {analyzeProgress && analyzeProgress.total > 0
+                  ? ` (${Math.round((analyzeProgress.current / analyzeProgress.total) * 100)}%)`
+                  : ''}
+              </span>
+              <button
+                onClick={onCancelAnalysis}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition flex items-center gap-1.5 cursor-pointer shadow-lg shadow-rose-900/40"
+                title="Stop analysis process"
+              >
+                <Square className="w-3.5 h-3.5 fill-current" />
+                Stop Process
+              </button>
+            </div>
+          </div>
+          <div className="w-full bg-slate-900 rounded-full h-2.5 overflow-hidden">
+            <div
+              className="bg-gradient-to-r from-cyan-500 via-indigo-500 to-emerald-400 h-2.5 rounded-full transition-all duration-300"
+              style={{
+                width: `${
+                  analyzeProgress && analyzeProgress.total > 0
+                    ? (analyzeProgress.current / analyzeProgress.total) * 100
+                    : 15
+                }%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Top Controls Bar */}
       <div className="p-6 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-xl space-y-6">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -172,10 +220,16 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
               onClick={onRunFastHeuristic}
               disabled={isAnalyzing || files.length === 0}
               title="Reads embedded PNG generation prompts (Flux, ComfyUI, Automatic1111) and smart heuristics in 0s without waiting on AI"
-              className="px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/20"
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+                isAnalyzing && analyzeProgress?.status.includes('Instant')
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 animate-pulse'
+                  : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/20'
+              }`}
             >
               <Zap className="w-4 h-4 text-emerald-200" />
-              Instant Auto-Name (0s)
+              {isAnalyzing && analyzeProgress?.status.includes('Instant')
+                ? 'Extracting Prompts...'
+                : 'Instant Auto-Name (0s)'}
             </button>
 
             {/* Deep AI Vision Analysis Button */}
@@ -184,14 +238,14 @@ export const OrganizeScreen: React.FC<OrganizeScreenProps> = ({
               disabled={isAnalyzing || files.length === 0}
               title="Full visual image inspection with local Ollama vision model (~2-3s per image)"
               className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-                isAnalyzing
+                isAnalyzing && !analyzeProgress?.status.includes('Instant')
                   ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 animate-pulse'
                   : 'bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white shadow-lg shadow-indigo-600/25'
               }`}
             >
               <Brain className="w-4 h-4 text-cyan-300" />
-              {isAnalyzing
-                ? 'AI Analyzing in Background...'
+              {isAnalyzing && !analyzeProgress?.status.includes('Instant')
+                ? 'AI Vision in Progress...'
                 : unanalyzedCount > 0
                 ? `Deep AI Vision (${unanalyzedCount})`
                 : 'Re-Analyze with AI'}

@@ -3,7 +3,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::ai::provider::ModelInfo;
 use crate::core::app_state::AppState;
-use crate::core::errors::{AppError, Result};
+use crate::core::errors::Result;
 use crate::core::events::{AnalyzeCompletedEvent, AnalyzeProgressEvent};
 use crate::filesystem::metadata_extractor::extract_png_metadata;
 use crate::storage::repository::{FileAnalysis, IndexedFile};
@@ -22,6 +22,12 @@ pub async fn get_file_analysis(
     Ok(repo.get_analysis(&file_id))
 }
 
+#[tauri::command]
+pub fn cancel_analysis(state: State<'_, AppState>) -> Result<bool> {
+    let cancelled = state.job_manager.cancel_job("analyze:batch");
+    Ok(cancelled)
+}
+
 /// Instant heuristic analyzer (0ms, no waiting on LLMs):
 /// Reads embedded PNG generation metadata (Flux, ComfyUI, Stable Diffusion, etc.)
 /// and filename cues to generate instant subject, category, and names.
@@ -30,18 +36,35 @@ pub async fn fast_heuristic_analyze(
     state: State<'_, AppState>,
     app_handle: AppHandle,
 ) -> Result<Vec<FileAnalysis>> {
-    let (settings, files_to_process) = {
+    let job_id = "analyze:batch".to_string();
+    let cancel_flag = state.job_manager.start_job(&job_id, "Instant metadata heuristic analysis");
+
+    let files_to_process = {
         let repo = state.repository.lock().unwrap();
-        let settings = repo.get_settings();
-        let all_files = repo.get_all_files();
-        (settings, all_files)
+        repo.get_all_files()
     };
 
     let total = files_to_process.len();
     let mut completed = Vec::new();
-    let mut embeddings_to_save = Vec::new();
 
     for (idx, file) in files_to_process.iter().enumerate() {
+        if cancel_flag.load(std::sync::atomic::Ordering::SeqCst) {
+            log::info!("Instant analysis cancelled by user");
+            if !completed.is_empty() {
+                let mut repo = state.repository.lock().unwrap();
+                let _ = repo.save_analyses(&completed);
+            }
+            state.job_manager.finish_job(&job_id);
+            let _ = app_handle.emit(
+                "analyze:completed",
+                AnalyzeCompletedEvent {
+                    total_analyzed: completed.len(),
+                    failed: 0,
+                },
+            );
+            return Ok(completed);
+        }
+
         let path = Path::new(&file.current_path);
         let meta = extract_png_metadata(path);
 
@@ -114,21 +137,13 @@ pub async fn fast_heuristic_analyze(
 
         completed.push(analysis.clone());
 
-        // Fast vector embedding
-        if let Ok(vec) = state
-            .embedding_coordinator
-            .generate_analysis_embedding(&settings.preferred_embedding_model, &analysis)
-        {
-            embeddings_to_save.push((file.id.clone(), vec));
-        }
-
         let _ = app_handle.emit(
             "analyze:progress",
             AnalyzeProgressEvent {
                 current: idx + 1,
                 total,
                 file_name: file.current_name.clone(),
-                status: "Instant metadata analysis".to_string(),
+                status: "Instant prompt & metadata analysis".to_string(),
             },
         );
     }
@@ -136,11 +151,9 @@ pub async fn fast_heuristic_analyze(
     {
         let mut repo = state.repository.lock().unwrap();
         repo.save_analyses(&completed)?;
-        if !embeddings_to_save.is_empty() {
-            let dims = embeddings_to_save[0].1.len();
-            let _ = repo.save_embeddings(&settings.preferred_embedding_model, dims, &embeddings_to_save);
-        }
     }
+
+    state.job_manager.finish_job(&job_id);
 
     let _ = app_handle.emit(
         "analyze:completed",
@@ -186,7 +199,7 @@ pub async fn analyze_files(
 
     let total = files_to_process.len();
     let mut completed_analyses = Vec::new();
-    let mut new_embeddings = Vec::new();
+    let mut new_embeddings: Vec<(String, Vec<f32>)> = Vec::new();
     let mut failed = 0;
 
     let vision_model = settings.preferred_vision_model.clone();
@@ -194,8 +207,24 @@ pub async fn analyze_files(
 
     for (idx, file) in files_to_process.iter().enumerate() {
         if cancel_flag.load(std::sync::atomic::Ordering::SeqCst) {
+            log::info!("AI analysis cancelled by user. Saving partial progress...");
+            if !completed_analyses.is_empty() {
+                let mut repo = state.repository.lock().unwrap();
+                let _ = repo.save_analyses(&completed_analyses);
+                if !new_embeddings.is_empty() {
+                    let dims = new_embeddings[0].1.len();
+                    let _ = repo.save_embeddings(&embedding_model, dims, &new_embeddings);
+                }
+            }
             state.job_manager.finish_job(&job_id);
-            return Err(AppError::Cancelled);
+            let _ = app_handle.emit(
+                "analyze:completed",
+                AnalyzeCompletedEvent {
+                    total_analyzed: completed_analyses.len(),
+                    failed,
+                },
+            );
+            return Ok(completed_analyses);
         }
 
         let _ = app_handle.emit(

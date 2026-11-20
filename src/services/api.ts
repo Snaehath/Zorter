@@ -48,6 +48,10 @@ export const api = {
     return invoke<FileAnalysis[]>('fast_heuristic_analyze');
   },
 
+  cancelAnalysis: async (): Promise<boolean> => {
+    return invoke<boolean>('cancel_analysis');
+  },
+
   // Organization
   planOrganization: async (
     targetDir?: string,

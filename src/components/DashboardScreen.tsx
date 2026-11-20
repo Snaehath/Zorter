@@ -12,6 +12,7 @@ import {
   Cpu,
   Layers,
   ArrowRight,
+  Square,
 } from 'lucide-react';
 import type { AppSettings, AppStats, IndexedFile, OperationJournalEntry } from '../types';
 
@@ -27,6 +28,7 @@ interface DashboardScreenProps {
   scanProgress: { current: number; total: number; current_file: string } | null;
   isAnalyzing: boolean;
   analyzeProgress: { current: number; total: number; file_name: string; status: string } | null;
+  onCancelAnalysis?: () => void;
 }
 
 export const DashboardScreen: React.FC<DashboardScreenProps> = ({
@@ -41,6 +43,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   scanProgress,
   isAnalyzing,
   analyzeProgress,
+  onCancelAnalysis,
 }) => {
   const formatBytes = (bytes: number): string => {
     if (bytes === 0) return '0 B';
@@ -76,19 +79,31 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       )}
 
       {isAnalyzing && analyzeProgress && (
-        <div className="p-4 rounded-2xl bg-cyan-950/60 border border-cyan-500/40 shadow-xl shadow-cyan-950/50 flex flex-col gap-2 animate-pulse">
+        <div className="p-4 rounded-2xl bg-cyan-950/70 border border-cyan-500/40 shadow-xl shadow-cyan-950/50 flex flex-col gap-3">
           <div className="flex items-center justify-between text-xs">
-            <div className="flex items-center gap-2 text-cyan-300 font-medium">
-              <Brain className="w-4 h-4 text-cyan-400" />
-              <span>{analyzeProgress.status}: {analyzeProgress.file_name}</span>
+            <div className="flex items-center gap-2 text-cyan-300 font-medium truncate max-w-[70%]">
+              <Brain className="w-4 h-4 text-cyan-400 shrink-0 animate-pulse" />
+              <span className="truncate">{analyzeProgress.status}: <strong className="text-white">{analyzeProgress.file_name}</strong></span>
             </div>
-            <span className="font-mono text-cyan-200">
-              {analyzeProgress.current} / {analyzeProgress.total}
-            </span>
+            <div className="flex items-center gap-3 shrink-0">
+              <span className="font-mono text-cyan-200">
+                {analyzeProgress.current} / {analyzeProgress.total} ({analyzeProgress.total > 0 ? Math.round((analyzeProgress.current / analyzeProgress.total) * 100) : 0}%)
+              </span>
+              {onCancelAnalysis && (
+                <button
+                  onClick={onCancelAnalysis}
+                  className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-rose-600/90 hover:bg-rose-500 text-white transition flex items-center gap-1 cursor-pointer shadow"
+                  title="Stop analysis process"
+                >
+                  <Square className="w-3 h-3 fill-current" />
+                  Stop
+                </button>
+              )}
+            </div>
           </div>
-          <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden">
+          <div className="w-full bg-slate-900 rounded-full h-2.5 overflow-hidden">
             <div
-              className="bg-cyan-500 h-2 rounded-full transition-all duration-200"
+              className="bg-gradient-to-r from-cyan-500 to-indigo-500 h-2.5 rounded-full transition-all duration-300"
               style={{
                 width: `${analyzeProgress.total > 0 ? (analyzeProgress.current / analyzeProgress.total) * 100 : 0}%`,
               }}

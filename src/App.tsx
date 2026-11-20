@@ -147,6 +147,14 @@ export function App() {
     }
   };
 
+  const handleCancelAnalysis = async () => {
+    try {
+      await api.cancelAnalysis();
+    } catch (e) {
+      console.error('Cancel analysis error', e);
+    }
+  };
+
   const handleUndoLast = async () => {
     try {
       await api.undoLastOperation();
@@ -189,6 +197,7 @@ export function App() {
             scanProgress={scanProgress}
             isAnalyzing={isAnalyzing}
             analyzeProgress={analyzeProgress}
+            onCancelAnalysis={handleCancelAnalysis}
           />
         )}
 
@@ -201,8 +210,10 @@ export function App() {
             onUndoLast={handleUndoLast}
             isUndoAvailable={hasUndoAvailable}
             isAnalyzing={isAnalyzing}
+            analyzeProgress={analyzeProgress}
             onRunAnalysis={handleRunAnalysis}
             onRunFastHeuristic={handleRunFastHeuristic}
+            onCancelAnalysis={handleCancelAnalysis}
           />
         )}
 
