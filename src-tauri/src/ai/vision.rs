@@ -4,7 +4,6 @@ use std::sync::Arc;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chrono::Utc;
 use image::imageops::FilterType;
-use tokio::sync::Semaphore;
 
 use crate::ai::provider::VisionProvider;
 use crate::core::errors::{AppError, Result};
@@ -12,16 +11,11 @@ use crate::storage::repository::{FileAnalysis, IndexedFile};
 
 pub struct VisionCoordinator {
     provider: Arc<dyn VisionProvider>,
-    concurrency_limit: Arc<Semaphore>,
 }
 
 impl VisionCoordinator {
-    pub fn new(provider: Arc<dyn VisionProvider>, concurrency: usize) -> Self {
-        let concurrency = if concurrency == 0 { 1 } else { concurrency };
-        Self {
-            provider,
-            concurrency_limit: Arc::new(Semaphore::new(concurrency)),
-        }
+    pub fn new(provider: Arc<dyn VisionProvider>) -> Self {
+        Self { provider }
     }
 
     /// Prepares image for local vision model: if dimensions exceed 768x768,
@@ -75,15 +69,4 @@ impl VisionCoordinator {
         })
     }
 
-    pub async fn analyze_file(
-        &self,
-        file: &IndexedFile,
-        model: &str,
-    ) -> Result<FileAnalysis> {
-        let _permit = self.concurrency_limit.acquire().await.map_err(|e| {
-            AppError::Generic(format!("Semaphore acquisition failed: {}", e))
-        })?;
-
-        self.analyze_file_sync(file, model)
-    }
 }

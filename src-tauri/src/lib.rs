@@ -23,30 +23,18 @@ pub fn run() {
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![
-            // Scan commands
-            commands::scan::select_directory,
-            commands::scan::scan_directory,
-            commands::scan::get_indexed_files,
-            // Analyze commands
-            commands::analyze::list_available_models,
-            commands::analyze::get_file_analysis,
-            commands::analyze::analyze_files,
+            commands::system::get_overview,
+            commands::system::pick_directory,
+            commands::system::get_thumbnail,
+            commands::system::reveal_in_folder,
+            commands::scan::scan_folder,
+            commands::analyze::analyze_folder,
             commands::analyze::cancel_analysis,
-            commands::analyze::clear_analyses,
-            // Organize commands
-            commands::organize::plan_organization,
-            commands::organize::execute_organization,
-            commands::organize::get_duplicate_files,
-            // Search commands
-            commands::search::search_semantic,
-            commands::search::find_similar_images,
-            // Settings & Stats
-            commands::settings::get_settings,
-            commands::settings::save_settings,
-            commands::settings::get_app_stats,
-            // Undo & History
-            commands::undo::get_operation_history,
-            commands::undo::undo_last_operation,
+            commands::organize::plan_folder,
+            commands::organize::apply_changes,
+            commands::organize::export_plan,
+            commands::organize::undo_last,
+            commands::search::search_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running zorter application");

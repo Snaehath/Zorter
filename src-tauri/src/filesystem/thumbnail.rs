@@ -4,9 +4,6 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use image::imageops::FilterType;
 use crate::core::errors::{AppError, Result};
 
-pub fn get_thumbnail_path(cache_dir: &Path, file_hash: &str) -> PathBuf {
-    cache_dir.join("thumbnails").join(format!("{}.jpg", file_hash))
-}
 
 pub fn generate_thumbnail(
     image_path: &Path,

@@ -84,45 +84,4 @@ impl SemanticSearchEngine {
         Ok(results)
     }
 
-    pub fn find_similar(
-        &self,
-        repository: &Repository,
-        target_file_id: &str,
-        limit: usize,
-    ) -> Result<Vec<SearchResultItem>> {
-        let embeddings = repository.get_all_embeddings();
-        let files = repository.get_all_files();
-        let analyses = repository.get_all_analyses();
-
-        let target_vec = match embeddings.get(target_file_id) {
-            Some(v) => v,
-            None => return Ok(Vec::new()),
-        };
-
-        let file_map: HashMap<String, IndexedFile> =
-            files.into_iter().map(|f| (f.id.clone(), f)).collect();
-        let analysis_map: HashMap<String, FileAnalysis> =
-            analyses.into_iter().map(|a| (a.file_id.clone(), a)).collect();
-
-        let ranked = rank_by_similarity(target_vec, &embeddings, 0.1);
-
-        let mut results = Vec::new();
-        for (file_id, score) in ranked {
-            if file_id == target_file_id {
-                continue; // Exclude self
-            }
-            if let Some(file) = file_map.get(&file_id) {
-                results.push(SearchResultItem {
-                    file: file.clone(),
-                    analysis: analysis_map.get(&file_id).cloned(),
-                    score,
-                });
-                if results.len() >= limit {
-                    break;
-                }
-            }
-        }
-
-        Ok(results)
-    }
 }

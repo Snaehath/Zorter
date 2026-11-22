@@ -87,14 +87,13 @@ pub fn generate_deterministic_filename(
     }
 
     // 3. Extract Environment / Location (e.g. "egypt", "forest", "desert", "cliff")
-    if components.len() < 2 {
-        if let Some(env) = &analysis.environment {
+    if components.len() < 2
+        && let Some(env) = &analysis.environment {
             let clean_env = sanitize_filename_component(env);
             if !clean_env.is_empty() && !is_generic_word(&clean_env) && !components.contains(&clean_env) {
                 components.push(clean_env);
             }
         }
-    }
 
     // 4. Extract Subcategory if components is still sparse (e.g. "Egypt", "Waterfalls", "Forest")
     if components.len() < 2 {

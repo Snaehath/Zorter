@@ -1,34 +1,35 @@
-use serde::{Deserialize, Serialize};
+//! Payloads of events emitted to the frontend during long-running jobs.
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScanProgressEvent {
+use serde::Serialize;
+
+use crate::storage::repository::FileAnalysis;
+
+/// `scan:progress` and `analyze:indexing`
+#[derive(Debug, Clone, Serialize)]
+pub struct ProgressEvent {
     pub current: usize,
     pub total: usize,
-    pub current_file: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScanCompletedEvent {
-    pub total_scanned: usize,
-    pub new_files: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnalyzeProgressEvent {
-    pub current: usize,
+/// `analyze:started`
+#[derive(Debug, Clone, Serialize)]
+pub struct AnalyzeStartedEvent {
     pub total: usize,
-    pub file_name: String,
-    pub status: String,
+    pub already_analyzed: usize,
+    pub model: String,
+    pub search_model: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnalyzeCompletedEvent {
-    pub total_analyzed: usize,
-    pub failed: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WatchChangeEvent {
+/// `analyze:file` — one per processed file, success or failure.
+#[derive(Debug, Clone, Serialize)]
+pub struct AnalyzeFileEvent {
+    pub index: usize,
+    pub total: usize,
+    pub file_id: String,
+    pub name: String,
     pub path: String,
-    pub change_type: String,
+    pub hash: String,
+    pub analysis: Option<FileAnalysis>,
+    pub proposed_name: Option<String>,
+    pub error: Option<String>,
 }

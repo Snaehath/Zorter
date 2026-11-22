@@ -16,10 +16,6 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-log = "2"
-clap = { version = "4.5", features = ["derive"] }
-indicatif = "0.17"
-colored = "2.1"
-dialoguer = "0.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["full"] }
@@ -33,5 +29,10 @@ thiserror = "2.0"
 dirs = "6.0"
 base64 = "0.22"
 rfd = "0.15"
-notify = "8.0"
 log = "0.4"
+
+# Smaller, faster release binary for the installer.
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

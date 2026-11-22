@@ -85,59 +85,17 @@ pub fn execute_file_operations(
     let mut executed_actions: Vec<FileOperationAction> = Vec::new();
 
     for action in actions {
-        let src = Path::new(&action.source_path);
-        let dst = Path::new(&action.destination_path);
-
-        if src == dst {
-            continue;
-        }
-
-        if !src.exists() {
-            return Err(AppError::Operation(format!(
-                "Cannot perform operation, source not found: {:?}",
-                src
-            )));
-        }
-
-        if dst.exists() {
-            return Err(AppError::Operation(format!(
-                "Destination file already exists, aborting to prevent overwrite: {:?}",
-                dst
-            )));
-        }
-
-        // Ensure parent directory exists
-        if let Some(parent) = dst.parent() {
-            if !parent.exists() {
-                fs::create_dir_all(parent).map_err(|e| {
-                    AppError::Operation(format!(
-                        "Failed to create target directory {:?}: {}",
-                        parent, e
-                    ))
-                })?;
+        if let Err(e) = execute_single_action(action) {
+            // All-or-nothing: undo every move already made in this batch so a
+            // failure never leaves files moved without a journal entry.
+            for prev in executed_actions.iter().rev() {
+                let _ = move_file(Path::new(&prev.destination_path), Path::new(&prev.source_path));
             }
+            return Err(e);
         }
-
-        // Perform the move/rename safely
-        if let Err(e) = fs::rename(src, dst) {
-            // If cross-device move fails with rename, try copy + remove
-            if let Err(copy_err) = fs::copy(src, dst) {
-                // Roll back any previously executed actions in this batch!
-                for prev in executed_actions.iter().rev() {
-                    let p_src = Path::new(&prev.destination_path);
-                    let p_dst = Path::new(&prev.source_path);
-                    let _ = fs::rename(p_src, p_dst);
-                }
-                return Err(AppError::Operation(format!(
-                    "Failed to move {:?} to {:?}: rename ({}) copy ({})",
-                    src, dst, e, copy_err
-                )));
-            } else {
-                let _ = fs::remove_file(src);
-            }
+        if action.source_path != action.destination_path {
+            executed_actions.push(action.clone());
         }
-
-        executed_actions.push(action.clone());
     }
 
     let entry = OperationJournalEntry {
@@ -149,6 +107,55 @@ pub fn execute_file_operations(
     };
 
     Ok(entry)
+}
+
+fn execute_single_action(action: &FileOperationAction) -> Result<()> {
+    let src = Path::new(&action.source_path);
+    let dst = Path::new(&action.destination_path);
+
+    if src == dst {
+        return Ok(());
+    }
+
+    if !src.exists() {
+        return Err(AppError::Operation(format!(
+            "Cannot perform operation, source not found: {:?}",
+            src
+        )));
+    }
+
+    if dst.exists() {
+        return Err(AppError::Operation(format!(
+            "Destination file already exists, aborting to prevent overwrite: {:?}",
+            dst
+        )));
+    }
+
+    if let Some(parent) = dst.parent()
+        && !parent.exists() {
+            fs::create_dir_all(parent).map_err(|e| {
+                AppError::Operation(format!(
+                    "Failed to create target directory {:?}: {}",
+                    parent, e
+                ))
+            })?;
+        }
+
+    move_file(src, dst)
+}
+
+/// Rename, falling back to copy + remove for cross-device moves.
+fn move_file(src: &Path, dst: &Path) -> Result<()> {
+    if let Err(e) = fs::rename(src, dst) {
+        if let Err(copy_err) = fs::copy(src, dst) {
+            return Err(AppError::Operation(format!(
+                "Failed to move {:?} to {:?}: rename ({}) copy ({})",
+                src, dst, e, copy_err
+            )));
+        }
+        let _ = fs::remove_file(src);
+    }
+    Ok(())
 }
 
 pub fn rollback_operation(entry: &OperationJournalEntry) -> Result<OperationJournalEntry> {
@@ -169,11 +176,10 @@ pub fn rollback_operation(entry: &OperationJournalEntry) -> Result<OperationJour
             )));
         }
 
-        if let Some(parent) = orig.parent() {
-            if !parent.exists() {
+        if let Some(parent) = orig.parent()
+            && !parent.exists() {
                 fs::create_dir_all(parent).map_err(AppError::Io)?;
             }
-        }
 
         if let Err(e) = fs::rename(curr, orig) {
             if let Err(copy_err) = fs::copy(curr, orig) {
@@ -196,4 +202,42 @@ pub fn rollback_operation(entry: &OperationJournalEntry) -> Result<OperationJour
         status: "rolled_back".to_string(),
         actions: rolled_back_actions,
     })
+}
+
+/// Most recent organization that has not been rolled back yet.
+///
+/// The journal is append-only, so an undone operation keeps its "completed"
+/// entry; it is recognised by a later `rollback:<id>` entry.
+pub fn find_undoable_operation(history: &[OperationJournalEntry]) -> Option<OperationJournalEntry> {
+    let undone: std::collections::HashSet<&str> = history
+        .iter()
+        .filter_map(|e| e.operation_type.strip_prefix("rollback:"))
+        .collect();
+    history
+        .iter()
+        .rev()
+        .find(|op| {
+            op.status == "completed"
+                && !op.operation_type.starts_with("rollback:")
+                && !undone.contains(op.id.as_str())
+                && !op.actions.is_empty()
+        })
+        .cloned()
+}
+
+/// After a rollback, remove the folders the organization created that are now
+/// empty. Walks up from each destination folder and stops at the file's
+/// original folder. `remove_dir` refuses non-empty directories, so nothing
+/// with content is ever deleted.
+pub fn remove_empty_folders(entry: &OperationJournalEntry) {
+    for action in &entry.actions {
+        let stop = Path::new(&action.source_path).parent();
+        let mut dir = Path::new(&action.destination_path).parent();
+        while let Some(d) = dir {
+            if Some(d) == stop || stop.is_some_and(|s| !d.starts_with(s)) || fs::remove_dir(d).is_err() {
+                break;
+            }
+            dir = d.parent();
+        }
+    }
 }

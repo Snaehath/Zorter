@@ -1,160 +1,131 @@
-# Zorter — Local-First AI File Organizer (v1.1)
+<div align="center">
 
-Zorter is a lightweight, production-grade local application that uses locally running AI vision models (via Ollama) to understand, categorize, rename, and organize image files and wallpapers.
+<img src="src-tauri/icons/128x128@2x.png" width="96" alt="Zorter logo" />
 
-The application works 100% locally on your machine without cloud dependencies or uploading personal files.
+# Zorter
 
----
+**Local AI file intelligence — understand, organize and discover your images.**
 
-## CLI & GUI Usage
+Zorter looks at your pictures with a vision model running on your own machine, then
+renames them, sorts them into folders and makes them searchable by meaning.
+Nothing is uploaded anywhere.
 
-Zorter can be run as a lightning-fast command-line tool or as a Tauri desktop app.
+</div>
 
-### CLI Commands
+![Zorter home screen](docs/screenshots/home.png)
+
+## Features
+
+- **Scan** a folder recursively: image / document counts, new vs. already indexed files, and exact duplicates (BLAKE3).
+- **Analyze** every image with a local vision model — description, category, style, lighting, colors, tags and a clean suggested filename — with a live preview of each file. Stop at any time; finished results are kept and the next run resumes.
+- **Organize** with a reviewable plan: proposed folder structure and renames, apply all / review file-by-file / exclude uncertain files, or export the plan as JSON. Moves never overwrite anything, a failure part-way rolls the whole batch back, and every organization can be undone.
+- **Search** by meaning ("dark cyberpunk city wallpapers") using local embeddings, with keyword fallback when the search index isn't available.
+- **Status** of the models, index, storage and operation history.
+
+| AI analysis | Organization plan | Semantic search |
+| --- | --- | --- |
+| ![Analyze](docs/screenshots/analyze.png) | ![Organize](docs/screenshots/organize.png) | ![Search](docs/screenshots/search.png) |
+
+## Requirements
+
+- Windows 10 or 11 (64-bit). WebView2 is preinstalled on Windows 11; the installer fetches it on Windows 10 if needed.
+- [Ollama](https://ollama.com) running locally, with the two models Zorter uses:
+
+  ```bash
+  ollama pull ministral-3:3b          # vision: describes and names images
+  ollama pull embeddinggemma-2:270m   # embeddings: powers semantic search
+  ```
+
+  A GPU with 4 GB of VRAM is enough; images are downscaled to 768 px before analysis.
+
+## Install
+
+Download an installer from the [Releases](../../releases) page (or [build one](#build-the-installers)):
+
+| File | Use it when |
+| --- | --- |
+| `Zorter_<version>_x64-setup.exe` | Recommended. Installs for your account only, no admin prompt. |
+| `Zorter_<version>_x64_en-US.msi` | Installing machine-wide or deploying with Group Policy / Intune. |
+
+Open **Zorter** from the Start menu. The usual flow is **Scan → Analyze → Organize**.
+
+## How it works
+
+```text
+┌──────────────────────────── Zorter (one Tauri app) ────────────────────────────┐
+│                                                                                │
+│   React UI (WebView2)          Tauri IPC            Rust core                  │
+│   Home · Scan · Analyze   ──── commands ────►   scan / analyze / organize      │
+│   Organize · Search       ◄──── events ─────    search / undo                  │
+│   Status                                              │                        │
+│                                                       ├─► Filesystem: walk,    │
+│                                                       │   BLAKE3, thumbnails,  │
+│                                                       │   journaled moves      │
+│                                                       ├─► Ollama HTTP API      │
+│                                                       │   (vision + embeddings)│
+│                                                       └─► JSON storage         │
+└────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Tauri** is the desktop shell: native window, the Rust backend, and the installers. The UI runs in the system WebView2, so the app is a few MB instead of bundling a browser.
+- **React** renders the UI inside that window and talks to Rust through typed commands (`src/lib/api.ts` ↔ `src-tauri/src/commands/`). Long jobs stream progress back as events.
+- **Ollama** does the AI work over its local HTTP API (`http://127.0.0.1:11434`).
+
+### Data on disk
+
+Everything lives in `%APPDATA%\zorter`:
+
+| Path | Contents |
+| --- | --- |
+| `config/settings.json` | Models, naming convention, folder layout, Ollama endpoint |
+| `index/files.json` | Indexed files with BLAKE3 hashes |
+| `index/analysis.json` | AI descriptions and attributes |
+| `index/embeddings/*.json` | Search vectors (500 per shard) |
+| `history/operations.jsonl` | Append-only journal of every move, used by Undo |
+| `cache/thumbnails/` | Small JPEG previews |
+
+Settings has no screen; edit `settings.json` while Zorter is closed to change models or the endpoint.
+
+## Development
+
+Prerequisites: [Rust](https://rustup.rs) 1.90+, Node.js 20.19+ (or 22.12+), and the
+[Tauri prerequisites for Windows](https://v2.tauri.app/start/prerequisites/) (MSVC build tools, WebView2).
 
 ```bash
-# Organize a directory of images using AI vision
-zorter organize "D:\Downloads\Desktop Wallpapers"
-
-# Shorthand organize syntax
-zorter "D:\Downloads\Desktop Wallpapers"
-
-# Dry run: preview proposed AI renames and categories without moving files
-zorter "D:\Downloads\Desktop Wallpapers" --dry-run
-
-# Run non-interactively (auto-confirm execution)
-zorter "D:\Downloads\Desktop Wallpapers" --yes
-
-# Specify organization structure and naming convention
-zorter "D:\Downloads\Desktop Wallpapers" --style by-category --naming snake-case
-zorter "D:\Downloads\Desktop Wallpapers" --style flat --naming kebab-case
-
-# Choose a specific Ollama vision model
-zorter "D:\Downloads\Desktop Wallpapers" --model ministral-3:3b
-
-# Scan a directory, compute BLAKE3 hashes, and report duplicates in < 1 second
-zorter scan "D:\Downloads\Desktop Wallpapers"
-
-# Undo the last batch of file moves and renames
-zorter undo
-
-# Check Ollama service connectivity and installed models
-zorter status
-
-# Launch the desktop graphical interface
-zorter gui
+npm install
+npx tauri dev                                    # run with hot reload
+cargo test --manifest-path src-tauri/Cargo.toml  # Rust tests
+npx tsc -b && npm run lint                       # type-check and lint the UI
 ```
 
-### CLI Command Options
+### Build the installers
 
-| Command | Option | Description |
-|---|---|---|
-| `organize` | `<PATH>` | Target directory containing images |
-| | `--dry-run`, `-n` | Preview renames and folder changes without modifying disk |
-| | `--yes`, `-y` | Execute operations without interactive confirmation |
-| | `--style`, `-s` | Organization folder layout: `by-category` (default) or `flat` |
-| | `--naming` | Naming convention: `snake-case` (default), `kebab-case`, or `title-case` |
-| | `--model`, `-m` | Ollama vision model (default: `ministral-3:3b`) |
-| `scan` | `<PATH>` | Scans images and BLAKE3 hashes, reporting count, size, and duplicates |
-| `undo` | | Reverts the last file rename/move batch using the operation journal |
-| `status` | | Shows Ollama connection status and installed vision/embedding models |
-| `gui` | | Opens the Tauri desktop GUI |
-
----
-
-## Architecture Overview
-
-```
-                      ┌────────────────────────────────────────┐
-                      │    CLI Interface  /  React Desktop     │
-                      │  indicatif   clap │ Dashboard Organize │
-                      └───────────────────▲────────────────────┘
-                                          │
-                      ┌───────────────────▼────────────────────┐
-                      │              Rust Core                 │
-                      └─┬──────────────┬──────────────┬──────┬─┘
-                        │              │              │      │
-            ┌───────────▼──┐    ┌──────▼───────┐      │   ┌──▼───────────┐
-            │  Filesystem  │    │ AI Provider  │      │   │ Local Search │
-            │    Engine    │    │ (Ollama)     │      │   │ Gemma Embed  │
-            │ BLAKE3 / Jpeg│    │  Ministral / │      │   │ Cosine Rank  │
-            │              │    │  Qwen / Gemma│      │   │              │
-            └──────────────┘    └──────────────┘      │   └──────────────┘
-                                ┌─────────────────────▼┐
-                                │ JSON Persistence &   │
-                                │ Operation Journal    │
-                                └──────────────────────┘
-```
-
-### The 5 Core Engines
-
-1. **Filesystem Engine (`src-tauri/src/filesystem/`)**
-   - Recursive scanning (`walkdir`)
-   - Fast, collision-resistant content fingerprinting (`BLAKE3`)
-   - Incremental scanning: size & timestamp comparison to avoid re-hashing unchanged files
-   - Cached thumbnail generation (`image` crate)
-   - Real-time directory watching (`notify`)
-   - Safe execution: dry-run path validation, non-overwriting moves, and reversible operation journal
-
-2. **AI Intelligence Engine (`src-tauri/src/ai/`)**
-   - Provider abstraction: `VisionProvider`, `EmbeddingProvider`, `RuntimeProvider`
-   - Local Ollama runtime integration (`ministral-3:3b`, `qwen3.5:4b`, etc.)
-   - Strict structured JSON response parsing (subject, style, category, lighting, colors, environment)
-   - Optimized downscaling to 768px with fast filtering to prevent VRAM spikes and run smoothly on 4GB GPUs
-   - Decoupled embedding generation so Ollama doesn't thrash/swap models during vision passes
-
-3. **Organization Engine (`src-tauri/src/organization/`)**
-   - Deterministic Rust naming rules using validated AI metadata (`clean_snake_case`, `kebab-case`, `Title_Case`)
-   - Rejects corrupt or hallucinated repeated-character hashes (e.g., `tvydfetvydfe...`)
-   - Category and subcategory taxonomy normalization (e.g. `Wallpapers/Nature`, `Wallpapers/Cyberpunk`)
-   - Destination folder hierarchy planning (`by_category`, `category_and_style`, `flat_rename`)
-   - Automatic collision avoidance appending numbered suffixes (`_001.png`, etc.)
-   - BLAKE3 exact duplicate detection and wasted storage calculation
-
-4. **File Operation Engine & Journal (`src-tauri/src/filesystem/operations.rs`)**
-   - Preview before execution
-   - Atomic moves/renames with fallback
-   - Append-only operation journal (`history/operations.jsonl`)
-   - Complete 1-click Undo / Rollback
-
-5. **Local Semantic Search Engine (`src-tauri/src/search/`)**
-   - Local vector index using Gemma Embeddings
-   - Fast cosine similarity ranking
-   - Natural language search queries ("Show dark cyberpunk wallpapers with neon lights")
-   - "Find Similar Images" discovery
-   - Combined metadata filtering (category, style, orientation)
-
----
-
-## Local JSON Persistence
-
-Application data is saved in your local OS AppData folder (`%APPDATA%/zorter` on Windows):
-
-- `config/settings.json`: User model, naming, and concurrency settings
-- `index/files.json`: Indexed file metadata and BLAKE3 hashes
-- `index/analysis.json`: Structured visual descriptions and attributes
-- `index/directories.json`: Monitored folders
-- `index/embeddings/embeddings_001.json`: Sharded 500-vector JSON files
-- `history/operations.jsonl`: Append-only journal of all operations
-- `cache/thumbnails/{hash}.jpg`: Cached image thumbnails
-
----
-
-## Development & Verification
-
-### 1. Run Unit Tests (Rust Backend)
 ```bash
-cargo test --manifest-path src-tauri/Cargo.toml
+npx tauri build
 ```
 
-### 2. Build Release CLI
-```bash
-cargo build --release --manifest-path src-tauri/Cargo.toml
-```
-The binary will be located at `src-tauri/target/release/zorter.exe`.
-Add it to your `PATH` or invoke it directly.
+Output in `src-tauri/target/release/bundle/`:
 
-### 3. Build Desktop Frontend
-```bash
-npm run build
+- `nsis/Zorter_<version>_x64-setup.exe`
+- `msi/Zorter_<version>_x64_en-US.msi`
+
+The Tauri CLI downloads NSIS and WiX automatically on first build.
+
+To change the app icon, edit `src-tauri/icons/app-icon.svg` and run `npx tauri icon src-tauri/icons/app-icon.svg`.
+
+### Project layout
+
+```text
+src/                     React UI
+  screens/               Home, Scan, Analyze, Organize, Search, Status
+  components/            Shared UI (panels, badges, progress bars, thumbnails)
+  lib/                   API bindings, types, app state, formatting
+src-tauri/
+  src/commands/          Tauri commands, one module per screen
+  src/ai/                Ollama client, vision analysis, embeddings, prompts
+  src/filesystem/        Scanning, hashing, thumbnails, journaled file operations
+  src/organization/      Naming rules, folder planning, duplicates
+  src/search/            Vector ranking and keyword fallback
+  src/storage/           JSON repository with atomic writes and recovery
+  tauri.conf.json        Window, security policy and installer settings
 ```

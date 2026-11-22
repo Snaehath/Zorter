@@ -155,14 +155,13 @@ impl VisionProvider for OllamaClient {
         let parsed: Value = serde_json::from_str(response_text)
             .or_else(|_| {
                 // If wrapped in markdown code fence or has text around it, find { and }
-                if let (Some(start), Some(end)) = (response_text.find('{'), response_text.rfind('}')) {
-                    if start <= end {
+                if let (Some(start), Some(end)) = (response_text.find('{'), response_text.rfind('}'))
+                    && start <= end {
                         let json_slice = &response_text[start..=end];
                         if let Ok(val) = serde_json::from_str(json_slice) {
                             return Ok(val);
                         }
                     }
-                }
                 let cleaned = response_text
                     .trim()
                     .trim_start_matches("```json")
@@ -282,11 +281,11 @@ impl EmbeddingProvider for OllamaClient {
             "input": text
         });
 
-        if let Ok(resp) = self.client.post(&embed_url).json(&body).send() {
-            if resp.status().is_success() {
-                if let Ok(val) = resp.json::<Value>() {
-                    if let Some(embeddings) = val.get("embeddings").and_then(|e: &Value| e.as_array()) {
-                        if let Some(first) = embeddings.first().and_then(|f: &Value| f.as_array()) {
+        if let Ok(resp) = self.client.post(&embed_url).json(&body).send()
+            && resp.status().is_success()
+                && let Ok(val) = resp.json::<Value>()
+                    && let Some(embeddings) = val.get("embeddings").and_then(|e: &Value| e.as_array())
+                        && let Some(first) = embeddings.first().and_then(|f: &Value| f.as_array()) {
                             let vec: Vec<f32> = first
                                 .iter()
                                 .filter_map(|v: &Value| v.as_f64().map(|f| f as f32))
@@ -295,10 +294,6 @@ impl EmbeddingProvider for OllamaClient {
                                 return Ok(vec);
                             }
                         }
-                    }
-                }
-            }
-        }
 
         // Fallback to legacy /api/embeddings
         let legacy_url = format!("{}/api/embeddings", self.base_url);

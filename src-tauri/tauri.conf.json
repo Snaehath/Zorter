@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "zorter",
+  "productName": "Zorter",
   "version": "0.1.0",
   "identifier": "com.zorter.app",
   "build": {
@@ -12,28 +12,45 @@
   "app": {
     "windows": [
       {
-        "title": "Zorter - Local-First AI File Organizer",
+        "title": "Zorter",
         "width": 1280,
-        "height": 850,
-        "minWidth": 960,
-        "minHeight": 640,
+        "height": 820,
+        "minWidth": 980,
+        "minHeight": 660,
         "resizable": true,
-        "fullscreen": false
+        "center": true,
+        "backgroundColor": "#0a0e1a",
+        "theme": "Dark"
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self' 'unsafe-inline'"
     }
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "nsis",
+      "msi"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
-  }
+    ],
+    "publisher": "Zorter",
+    "category": "Productivity",
+    "shortDescription": "Local AI file organizer",
+    "longDescription": "Understand, organize and search your images with local AI models running on Ollama.",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico"
+      }
+    },
+    "copyright": "Copyright © 2026 Zorter contributors"
+  },
+  "mainBinaryName": "zorter"
 }

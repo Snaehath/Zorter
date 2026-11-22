@@ -47,9 +47,6 @@ impl JobManager {
         jobs.remove(job_id);
     }
 
-    pub fn is_cancelled(flag: &Arc<AtomicBool>) -> bool {
-        flag.load(Ordering::SeqCst)
-    }
 
     pub fn get_running_jobs(&self) -> HashMap<String, String> {
         self.running_jobs.lock().unwrap().clone()

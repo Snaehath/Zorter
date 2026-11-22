@@ -49,11 +49,10 @@ where
             !file_name.starts_with('.') && file_name != "node_modules" && file_name != "AppData"
         })
     {
-        if let Some(flag) = cancellation_flag {
-            if flag.load(Ordering::SeqCst) {
+        if let Some(flag) = cancellation_flag
+            && flag.load(Ordering::SeqCst) {
                 return Err(AppError::Cancelled);
             }
-        }
 
         let entry = match entry {
             Ok(e) => e,
@@ -71,11 +70,10 @@ where
 
     // Step 2: Extract metadata, incremental hash comparison, thumbnail generation
     for (idx, path) in candidates.iter().enumerate() {
-        if let Some(flag) = cancellation_flag {
-            if flag.load(Ordering::SeqCst) {
+        if let Some(flag) = cancellation_flag
+            && flag.load(Ordering::SeqCst) {
                 return Err(AppError::Cancelled);
             }
-        }
 
         let path_str = path.to_string_lossy().to_string();
         on_progress(ScanProgress {
@@ -96,14 +94,13 @@ where
         let mut original_path = path_str.clone();
         let mut thumb_url = None;
 
-        if let Some(existing) = existing_map.get(&path_str) {
-            if existing.size == metadata.size && existing.modified_ms == metadata.modified_ms {
+        if let Some(existing) = existing_map.get(&path_str)
+            && existing.size == metadata.size && existing.modified_ms == metadata.modified_ms {
                 blake3_hash = Some(existing.hash.clone());
                 original_name = existing.original_name.clone();
                 original_path = existing.original_path.clone();
                 thumb_url = existing.thumbnail_url.clone();
             }
-        }
 
         let hash = match blake3_hash {
             Some(h) => h,

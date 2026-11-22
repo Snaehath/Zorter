@@ -1,231 +1,96 @@
-import { useState, useEffect } from 'react';
-import { Header } from './components/Header';
-import { DashboardScreen } from './components/DashboardScreen';
-import { OrganizeScreen } from './components/OrganizeScreen';
-import { ExploreScreen } from './components/ExploreScreen';
-import { SettingsModal } from './components/SettingsModal';
-import type {
-  AppSettings,
-  AppStats,
-  FileAnalysis,
-  IndexedFile,
-  OperationJournalEntry,
-  ScanProgressEvent,
-  AnalyzeProgressEvent,
-} from './types';
-import { api } from './services/api';
+import { Activity, FolderSearch, House, Layers, Search, Sparkles, type LucideIcon } from 'lucide-react';
+import { StoreProvider } from './lib/store';
+import { useStore, type Screen } from './lib/storeContext';
+import { Badge, Logo } from './components/ui';
+import { cx } from './lib/cx';
+import { HomeScreen } from './screens/Home';
+import { ScanScreen } from './screens/Scan';
+import { AnalyzeScreen } from './screens/Analyze';
+import { OrganizeScreen } from './screens/Organize';
+import { SearchScreen } from './screens/Search';
+import { StatusScreen } from './screens/Status';
 
-export function App() {
-  const [currentTab, setCurrentTab] = useState<'dashboard' | 'organize' | 'explore'>('dashboard');
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [files, setFiles] = useState<IndexedFile[]>([]);
-  const [analyses, setAnalyses] = useState<FileAnalysis[]>([]);
-  const [stats, setStats] = useState<AppStats | null>(null);
-  const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [history, setHistory] = useState<OperationJournalEntry[]>([]);
+const NAV: { id: Screen; label: string; icon: LucideIcon }[] = [
+  { id: 'home', label: 'Home', icon: House },
+  { id: 'scan', label: 'Scan', icon: FolderSearch },
+  { id: 'analyze', label: 'Analyze', icon: Sparkles },
+  { id: 'organize', label: 'Organize', icon: Layers },
+  { id: 'search', label: 'Search', icon: Search },
+  { id: 'status', label: 'Status', icon: Activity },
+];
 
-  // Async Tasks State
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanProgress, setScanProgress] = useState<ScanProgressEvent | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analyzeProgress, setAnalyzeProgress] = useState<AnalyzeProgressEvent | null>(null);
-
-  const loadData = async () => {
-    try {
-      const [fetchedFiles, fetchedStats, fetchedSettings, fetchedHistory] = await Promise.all([
-        api.getIndexedFiles().catch(() => []),
-        api.getAppStats().catch(() => null),
-        api.getSettings().catch(() => null),
-        api.getOperationHistory().catch(() => []),
-      ]);
-
-      setFiles(fetchedFiles);
-      setStats(fetchedStats);
-      setSettings(fetchedSettings);
-      setHistory(fetchedHistory);
-
-      // Load analyses for each file
-      if (fetchedFiles.length > 0) {
-        const loadedAnalyses: FileAnalysis[] = [];
-        for (const file of fetchedFiles) {
-          const a = await api.getFileAnalysis(file.id).catch(() => null);
-          if (a) loadedAnalyses.push(a);
-        }
-        setAnalyses(loadedAnalyses);
-      }
-    } catch (e) {
-      console.error('Failed to load application data', e);
-    }
-  };
-
-  useEffect(() => {
-    loadData();
-
-    // Setup event listeners
-    let unlistenScanProg: (() => void) | undefined;
-    let unlistenScanDone: (() => void) | undefined;
-    let unlistenAnalyzeProg: (() => void) | undefined;
-    let unlistenAnalyzeDone: (() => void) | undefined;
-
-    api.onScanProgress((e) => {
-      setIsScanning(true);
-      setScanProgress(e);
-    }).then((un) => {
-      unlistenScanProg = un;
-    });
-
-    api.onScanCompleted(() => {
-      setIsScanning(false);
-      setScanProgress(null);
-      loadData();
-    }).then((un) => {
-      unlistenScanDone = un;
-    });
-
-    api.onAnalyzeProgress((e) => {
-      setIsAnalyzing(true);
-      setAnalyzeProgress(e);
-    }).then((un) => {
-      unlistenAnalyzeProg = un;
-    });
-
-    api.onAnalyzeCompleted(() => {
-      setIsAnalyzing(false);
-      setAnalyzeProgress(null);
-      loadData();
-    }).then((un) => {
-      unlistenAnalyzeDone = un;
-    });
-
-    return () => {
-      if (unlistenScanProg) unlistenScanProg();
-      if (unlistenScanDone) unlistenScanDone();
-      if (unlistenAnalyzeProg) unlistenAnalyzeProg();
-      if (unlistenAnalyzeDone) unlistenAnalyzeDone();
-    };
-  }, []);
-
-  const handleSelectDirectory = async () => {
-    try {
-      const selected = await api.selectDirectory();
-      if (selected) {
-        setIsScanning(true);
-        await api.scanDirectory(selected);
-        await loadData();
-      }
-    } catch (e) {
-      console.error('Directory selection/scan error', e);
-    } finally {
-      setIsScanning(false);
-      setScanProgress(null);
-    }
-  };
-
-  const handleRunAnalysis = async (fileIds?: string[]) => {
-    setIsAnalyzing(true);
-    try {
-      await api.analyzeFiles(fileIds);
-      await loadData();
-    } catch (e) {
-      console.error('Analysis error', e);
-    } finally {
-      setIsAnalyzing(false);
-      setAnalyzeProgress(null);
-    }
-  };
-
-  const handleClearAnalyses = async () => {
-    try {
-      await api.clearAnalyses();
-      await loadData();
-    } catch (e) {
-      console.error('Clear analyses error', e);
-    }
-  };
-
-  const handleCancelAnalysis = async () => {
-    try {
-      await api.cancelAnalysis();
-    } catch (e) {
-      console.error('Cancel analysis error', e);
-    }
-  };
-
-  const handleUndoLast = async () => {
-    try {
-      await api.undoLastOperation();
-      await loadData();
-    } catch (e) {
-      alert(`Undo error: ${e}`);
-    }
-  };
-
-  const hasUndoAvailable = history.some(
-    (op) => op.status === 'completed' && !op.operation_type.startsWith('rollback:')
-  );
-
+function Sidebar() {
+  const { screen, go, overview, analyze, scan } = useStore();
+  const busy: Partial<Record<Screen, boolean>> = { analyze: analyze.running, scan: scan.running };
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
-      {/* Top Header */}
-      <Header
-        currentTab={currentTab}
-        onSelectTab={setCurrentTab}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onUndoLast={handleUndoLast}
-        isUndoAvailable={hasUndoAvailable}
-        visionModel={settings?.preferred_vision_model || 'qwen3.5:4b'}
-        embeddingModel={settings?.preferred_embedding_model || 'embeddinggemma-2:270m'}
-        isProcessing={isScanning || isAnalyzing}
-      />
-
-      {/* Main View Area */}
-      <main className="flex-1 p-6 md:p-8 max-w-[1600px] w-full mx-auto">
-        {currentTab === 'dashboard' && (
-          <DashboardScreen
-            stats={stats}
-            settings={settings}
-            recentFiles={files}
-            recentHistory={history}
-            onSelectDirectory={handleSelectDirectory}
-            onNavigateTab={setCurrentTab}
-            onUndoLast={handleUndoLast}
-            isScanning={isScanning}
-            scanProgress={scanProgress}
-            isAnalyzing={isAnalyzing}
-            analyzeProgress={analyzeProgress}
-            onCancelAnalysis={handleCancelAnalysis}
-          />
-        )}
-
-        {currentTab === 'organize' && (
-          <OrganizeScreen
-            files={files}
-            analyses={analyses}
-            onSelectDirectory={handleSelectDirectory}
-            onRefreshData={loadData}
-            onUndoLast={handleUndoLast}
-            isUndoAvailable={hasUndoAvailable}
-            isAnalyzing={isAnalyzing}
-            analyzeProgress={analyzeProgress}
-            onRunAnalysis={handleRunAnalysis}
-            onCancelAnalysis={handleCancelAnalysis}
-            onClearAnalyses={handleClearAnalyses}
-          />
-        )}
-
-        {currentTab === 'explore' && (
-          <ExploreScreen files={files} analyses={analyses} />
-        )}
-      </main>
-
-      {/* Settings Modal */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        onSettingsSaved={loadData}
-      />
-    </div>
+    <aside className="flex w-[212px] shrink-0 flex-col border-r border-line-soft bg-panel/60">
+      <div className="flex items-center gap-2.5 px-5 pb-6 pt-6">
+        <Logo size={26} />
+        <span className="bg-gradient-to-r from-accent to-purple bg-clip-text text-[20px] font-bold tracking-tight text-transparent">
+          zorter
+        </span>
+      </div>
+      <nav className="flex flex-col gap-1 px-3" aria-label="Main">
+        {NAV.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => go(id)}
+            aria-current={screen === id ? 'page' : undefined}
+            className={cx(
+              'flex h-10 items-center gap-3 rounded-lg px-3 text-left text-[13px] transition-colors',
+              screen === id ? 'bg-select text-white' : 'text-dim hover:bg-raised hover:text-text',
+            )}
+          >
+            <Icon size={17} />
+            <span className="flex-1">{label}</span>
+            {busy[id] && <span className="h-2 w-2 animate-pulse rounded-full bg-purple" title="Running" />}
+          </button>
+        ))}
+      </nav>
+      <div className="mt-auto space-y-1.5 border-t border-line-soft px-5 py-4 text-[12px]">
+        <div className="flex items-center justify-between">
+          <span className="text-faint">Ollama</span>
+          {overview ? (
+            <Badge tone={overview.online ? 'ok' : 'bad'}>{overview.online ? 'Online' : 'Offline'}</Badge>
+          ) : (
+            <Badge tone="muted">Checking</Badge>
+          )}
+        </div>
+        <div className="text-faint">v{overview?.version ?? '…'}</div>
+      </div>
+    </aside>
   );
 }
 
-export default App;
+function Current() {
+  const { screen, folder } = useStore();
+  switch (screen) {
+    case 'home':
+      return <HomeScreen />;
+    case 'scan':
+      return <ScanScreen />;
+    case 'analyze':
+      return <AnalyzeScreen />;
+    case 'organize':
+      return <OrganizeScreen key={folder ?? 'none'} />;
+    case 'search':
+      return <SearchScreen />;
+    case 'status':
+      return <StatusScreen />;
+  }
+}
+
+export default function App() {
+  return (
+    <StoreProvider>
+      <div className="flex h-full">
+        <Sidebar />
+        <main className="min-w-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-[1080px] px-8 py-7">
+            <Current />
+          </div>
+        </main>
+      </div>
+    </StoreProvider>
+  );
+}

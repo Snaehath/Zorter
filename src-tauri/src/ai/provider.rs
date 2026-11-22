@@ -40,3 +40,11 @@ pub trait EmbeddingProvider: Send + Sync {
 pub trait RuntimeProvider: Send + Sync {
     fn health_check(&self) -> Result<bool>;
 }
+
+/// True when `wanted` is installed. A missing tag means `:latest`, matching
+/// how Ollama resolves model names.
+pub fn model_installed(models: &[ModelInfo], wanted: &str) -> bool {
+    let norm = |s: &str| if s.contains(':') { s.to_string() } else { format!("{s}:latest") };
+    let wanted = norm(wanted);
+    models.iter().any(|m| norm(&m.name) == wanted)
+}

@@ -14,13 +14,12 @@ pub fn recover_or_load<T: DeserializeOwned + Default>(path: &Path) -> Result<T> 
         Err(e) => {
             log::warn!("Corruption detected in {:?}: {}. Attempting .bak recovery...", path, e);
             let bak_path = path.with_extension("json.bak");
-            if bak_path.exists() {
-                if let Ok(recovered) = read_json_file::<T>(&bak_path) {
+            if bak_path.exists()
+                && let Ok(recovered) = read_json_file::<T>(&bak_path) {
                     log::info!("Successfully recovered {:?} from backup", path);
                     let _ = fs::copy(&bak_path, path);
                     return Ok(recovered);
                 }
-            }
             log::error!("Could not recover {:?}. Falling back to default state.", path);
             Ok(T::default())
         }

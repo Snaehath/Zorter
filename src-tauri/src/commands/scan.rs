@@ -1,83 +1,92 @@
-use std::path::PathBuf;
+//! Scan screen: index a folder and report what needs attention.
+
+use std::collections::HashSet;
+use std::path::Path;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
+
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::core::app_state::AppState;
-use crate::core::errors::{AppError, Result};
-use crate::core::events::{ScanCompletedEvent, ScanProgressEvent};
-use crate::filesystem::scanner::scan_directory as fs_scan;
-use crate::storage::repository::IndexedFile;
+use crate::core::errors::Result;
+use crate::core::events::ProgressEvent;
+use crate::filesystem::census::census;
+use crate::filesystem::scanner::scan_directory;
+use crate::organization::deduplication::detect_duplicates;
+use crate::storage::repository::{IndexedFile, Repository};
 
-#[tauri::command]
-pub async fn select_directory() -> Result<Option<String>> {
-    let folder = rfd::AsyncFileDialog::new()
-        .set_title("Select Directory to Organize")
-        .pick_folder()
-        .await;
+use super::{blocking, folder};
 
-    Ok(folder.map(|f| f.path().to_string_lossy().to_string()))
+#[derive(Serialize)]
+pub struct ScanReport {
+    pub directory: String,
+    pub files_discovered: usize,
+    pub images: usize,
+    pub documents: usize,
+    pub other: usize,
+    pub already_indexed: usize,
+    pub new_files: usize,
+    pub needs_analysis: usize,
+    pub duplicates: usize,
+    pub wasted_bytes: u64,
+    pub elapsed_ms: u128,
+}
+
+/// Scan `dir` into the index. The repository lock is only held to read the
+/// existing index and to save results, never during the disk walk.
+pub(crate) fn index_directory(
+    repo: &Arc<Mutex<Repository>>,
+    dir: &Path,
+    on_progress: impl Fn(usize, usize),
+) -> Result<Vec<IndexedFile>> {
+    let (existing, cache) = {
+        let r = repo.lock().unwrap();
+        (r.get_all_files(), r.get_cache_dir())
+    };
+    let files = scan_directory(dir, &cache, &existing, false, None, |p| on_progress(p.current, p.total))?;
+    let mut r = repo.lock().unwrap();
+    r.save_files(&files)?;
+    let _ = r.add_monitored_directory(&dir.to_string_lossy(), files.len());
+    Ok(files)
 }
 
 #[tauri::command]
-pub async fn scan_directory(
-    dir_path: String,
-    state: State<'_, AppState>,
-    app_handle: AppHandle,
-) -> Result<Vec<IndexedFile>> {
-    let job_id = format!("scan:{}", dir_path);
-    let cancel_flag = state.job_manager.start_job(&job_id, &format!("Scanning {}", dir_path));
+pub async fn scan_folder(dir: String, state: State<'_, AppState>, app: AppHandle) -> Result<ScanReport> {
+    let dir = folder(&dir)?;
+    let repo = state.repository.clone();
+    blocking(move || {
+        let started = Instant::now();
+        let counts = census(&dir);
+        let (indexed_ids, analyzed_ids): (HashSet<String>, HashSet<String>) = {
+            let r = repo.lock().unwrap();
+            (
+                r.get_all_files().into_iter().map(|f| f.id).collect(),
+                r.get_all_analyses().into_iter().map(|a| a.file_id).collect(),
+            )
+        };
 
-    let (cache_dir, existing_files) = {
-        let repo = state.repository.lock().unwrap();
-        (repo.get_cache_dir(), repo.get_all_files())
-    };
+        let files = index_directory(&repo, &dir, |current, total| {
+            let _ = app.emit("scan:progress", ProgressEvent { current, total });
+        })?;
 
-    let target_path = PathBuf::from(&dir_path);
-    let handle_clone = app_handle.clone();
+        let unique: HashSet<&str> = files.iter().map(|f| f.id.as_str()).collect();
+        let already = files.iter().filter(|f| indexed_ids.contains(&f.id)).count();
+        let dupes = detect_duplicates(&files);
 
-    let scan_res = tokio::task::spawn_blocking(move || {
-        fs_scan(
-            &target_path,
-            &cache_dir,
-            &existing_files,
-            false,
-            Some(&cancel_flag),
-            |prog| {
-                let _ = handle_clone.emit(
-                    "scan:progress",
-                    ScanProgressEvent {
-                        current: prog.current,
-                        total: prog.total,
-                        current_file: prog.current_path,
-                    },
-                );
-            },
-        )
+        Ok(ScanReport {
+            directory: dir.display().to_string(),
+            files_discovered: counts.total,
+            images: files.len(),
+            documents: counts.documents,
+            other: counts.other,
+            already_indexed: already,
+            new_files: files.len() - already,
+            needs_analysis: unique.iter().filter(|id| !analyzed_ids.contains(**id)).count(),
+            duplicates: dupes.iter().map(|d| d.files.len() - 1).sum(),
+            wasted_bytes: dupes.iter().map(|d| d.wasted_bytes).sum(),
+            elapsed_ms: started.elapsed().as_millis(),
+        })
     })
     .await
-    .map_err(|e| AppError::Generic(format!("Scan task panicked: {}", e)))??;
-
-    state.job_manager.finish_job(&job_id);
-
-    // Save newly scanned files into repository
-    {
-        let mut repo = state.repository.lock().unwrap();
-        repo.save_files(&scan_res)?;
-        repo.add_monitored_directory(&dir_path, scan_res.len())?;
-    }
-
-    let _ = app_handle.emit(
-        "scan:completed",
-        ScanCompletedEvent {
-            total_scanned: scan_res.len(),
-            new_files: scan_res.len(),
-        },
-    );
-
-    Ok(scan_res)
-}
-
-#[tauri::command]
-pub async fn get_indexed_files(state: State<'_, AppState>) -> Result<Vec<IndexedFile>> {
-    let repo = state.repository.lock().unwrap();
-    Ok(repo.get_all_files())
 }

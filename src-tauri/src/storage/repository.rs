@@ -173,15 +173,14 @@ impl Repository {
         if let Ok(entries) = fs::read_dir(&embeddings_dir) {
             for entry in entries.flatten() {
                 let p = entry.path();
-                if p.is_file() && p.extension().map_or(false, |ext| ext == "json") {
-                    if let Ok(shard) = read_json_file::<EmbeddingShard>(&p) {
+                if p.is_file() && p.extension().is_some_and(|ext| ext == "json")
+                    && let Ok(shard) = read_json_file::<EmbeddingShard>(&p) {
                         embedding_model = shard.model;
                         embedding_dims = shard.dimensions;
                         for emb in shard.embeddings {
                             embeddings_map.insert(emb.file_id, emb.vector);
                         }
                     }
-                }
             }
         }
 
@@ -212,12 +211,6 @@ impl Repository {
         self.settings.clone()
     }
 
-    pub fn save_settings(&mut self, settings: AppSettings) -> Result<()> {
-        self.settings = settings;
-        let path = self.base_dir.join("config").join("settings.json");
-        write_json_atomic(&path, &self.settings)?;
-        Ok(())
-    }
 
     pub fn get_all_files(&self) -> Vec<IndexedFile> {
         self.files.values().cloned().collect()
@@ -261,16 +254,6 @@ impl Repository {
         Ok(())
     }
 
-    pub fn clear_all_analyses(&mut self) -> Result<()> {
-        self.analyses.clear();
-        let index = AnalysisIndex {
-            version: 1,
-            analyses: Vec::new(),
-        };
-        let path = self.base_dir.join("index").join("analysis.json");
-        write_json_atomic(&path, &index)?;
-        Ok(())
-    }
 
     pub fn get_all_embeddings(&self) -> HashMap<String, Vec<f32>> {
         self.embeddings.clone()
@@ -318,9 +301,6 @@ impl Repository {
         Ok(())
     }
 
-    pub fn get_monitored_directories(&self) -> Vec<MonitoredDirectory> {
-        self.directories.clone()
-    }
 
     pub fn add_monitored_directory(&mut self, dir_path: &str, total_files: usize) -> Result<()> {
         if !self.directories.iter().any(|d| d.path == dir_path) {

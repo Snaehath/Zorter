@@ -17,11 +17,10 @@ pub fn read_json_file<T: DeserializeOwned>(path: &Path) -> Result<T> {
 /// Atomically write JSON data: writes to a temporary file, flushes to disk,
 /// and renames to the destination path. Also creates a .bak backup.
 pub fn write_json_atomic<T: Serialize>(path: &Path, data: &T) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        if !parent.exists() {
+    if let Some(parent) = path.parent()
+        && !parent.exists() {
             fs::create_dir_all(parent).map_err(AppError::Io)?;
         }
-    }
 
     let json_bytes = serde_json::to_vec_pretty(data).map_err(AppError::Json)?;
 
@@ -49,11 +48,10 @@ pub fn write_json_atomic<T: Serialize>(path: &Path, data: &T) -> Result<()> {
 }
 
 pub fn append_jsonl<T: Serialize>(path: &Path, entry: &T) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        if !parent.exists() {
+    if let Some(parent) = path.parent()
+        && !parent.exists() {
             fs::create_dir_all(parent).map_err(AppError::Io)?;
         }
-    }
 
     let mut line = serde_json::to_string(entry).map_err(AppError::Json)?;
     line.push('\n');
