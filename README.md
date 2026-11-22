@@ -18,7 +18,7 @@ Nothing is uploaded anywhere.
 
 - **Scan** a folder recursively: image / document counts, new vs. already indexed files, and exact duplicates (BLAKE3).
 - **Analyze** every image with a local vision model — description, category, style, lighting, colors, tags and a clean suggested filename — with a live preview of each file. Stop at any time; finished results are kept and the next run resumes.
-- **Organize** with a reviewable plan: proposed folder structure and renames, apply all / review file-by-file / exclude uncertain files, or export the plan as JSON. Moves never overwrite anything, a failure part-way rolls the whole batch back, and every organization can be undone.
+- **Organize** your way with a reviewable plan: choose the folder structure (or no new folders at all), the naming style (or keep the original names), and what happens to files that weren't analyzed. Then apply all, review file-by-file, exclude uncertain files, or export the plan as JSON. Moves never overwrite anything, a failure part-way rolls the whole batch back, and every organization can be undone.
 - **Search** by meaning ("dark cyberpunk city wallpapers") using local embeddings, with keyword fallback when the search index isn't available.
 - **Status** of the models, index, storage and operation history.
 
@@ -48,6 +48,22 @@ Download an installer from the [Releases](../../releases) page (or [build one](#
 | `Zorter_<version>_x64_en-US.msi` | Installing machine-wide or deploying with Group Policy / Intune. |
 
 Open **Zorter** from the Start menu. The usual flow is **Scan → Analyze → Organize**.
+
+## Organize options
+
+Open **Customize** on the Organize screen. The preview updates as you change options, and your choices are remembered.
+
+| Option | Choices |
+| --- | --- |
+| **Folders** | *Category / Subcategory* (`Nature/Forest/`), *Category only* (`Nature/`), *Category / Style* (`Nature/Minimalist/`), *Keep current folders* (rename only, no new folders), *One folder* (everything into the chosen folder) |
+| **File names** | `snake_case`, `kebab-case`, `Title_Case`, *Detailed*, *AI suggested*, or *Keep original names* (sort only) |
+| **Files not analyzed yet** | Move to `Needs-Review/` for manual sorting, or leave them where they are |
+
+Some useful combinations:
+
+- **Rename only:** *Keep current folders* with any naming style.
+- **Sort only:** any folder layout with *Keep original names*.
+- **Hands off unanalyzed files:** *Leave where they are*. Only files with an AI description change.
 
 ## How it works
 
@@ -110,6 +126,14 @@ Output in `src-tauri/target/release/bundle/`:
 - `msi/Zorter_<version>_x64_en-US.msi`
 
 The Tauri CLI downloads NSIS and WiX automatically on first build.
+
+### Releasing a new version
+
+1. Bump `version` in `package.json` and `src-tauri/Cargo.toml` (`tauri.conf.json` reads it from `package.json`).
+2. Move the `Unreleased` notes in `CHANGELOG.md` under the new version.
+3. Run `npx tauri build`, tag the commit (`git tag v0.2.0`) and attach both installers to a GitHub release.
+
+Zorter follows [Semantic Versioning](https://semver.org/). It stays at `0.x` until the on-disk index format is stable and it has been used on real libraries; `1.0.0` marks that commitment.
 
 To change the app icon, edit `src-tauri/icons/app-icon.svg` and run `npx tauri icon src-tauri/icons/app-icon.svg`.
 

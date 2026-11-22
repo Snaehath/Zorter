@@ -262,7 +262,7 @@ fn test_changes_route_unanalyzed_to_needs_review_and_cleanup_folders() {
         item("x.png", "", false),
         item("same.png", &root.join("same.png").display().to_string(), true),
     ];
-    let (changes, unchanged) = build_changes(&root, &items, &repo);
+    let (changes, unchanged) = build_changes(&root, &items, &repo, true);
     assert_eq!(unchanged, 1);
     assert_eq!(changes.len(), 2);
     assert!(!changes[0].uncertain && changes[0].folder == "Art/Sci-Fi");
@@ -289,5 +289,88 @@ fn test_changes_route_unanalyzed_to_needs_review_and_cleanup_folders() {
     remove_empty_folders(&entry);
     assert!(!root.join("Art").exists());
     assert!(root.join(NEEDS_REVIEW).exists(), "non-empty folder must survive");
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn test_planner_layout_and_naming_options() {
+    use crate::organization::folder_planner::create_organization_plan;
+    use std::path::PathBuf;
+
+    let root = std::env::temp_dir().join(format!("zorter_opts_{}", uuid::Uuid::new_v4()));
+    let sub = root.join("Holiday");
+    let file = IndexedFile {
+        id: "f1".into(),
+        original_name: "IMG_0042.jpg".into(),
+        current_name: "IMG_0042.jpg".into(),
+        original_path: sub.join("IMG_0042.jpg").display().to_string(),
+        current_path: sub.join("IMG_0042.jpg").display().to_string(),
+        file_type: "image/jpeg".into(),
+        size: 1,
+        modified_ms: 1,
+        hash: "h".into(),
+        thumbnail_url: None,
+        indexed: true,
+    };
+    let analysis = FileAnalysis {
+        file_id: "f1".into(),
+        description: "Misty forest at sunrise".into(),
+        subject: vec!["forest".into(), "sunrise".into()],
+        category: "Nature".into(),
+        subcategory: "Forest".into(),
+        tags: vec!["misty".into()],
+        visual_style: "Photography".into(),
+        environment: None,
+        lighting: None,
+        colors: vec![],
+        orientation: None,
+        suggested_filename: "forest_sunrise.jpg".into(),
+        model: "m".into(),
+        analyzed_at: "2026-11-20T12:00:00Z".into(),
+    };
+    let dest = |layout: &str, naming: &str| -> PathBuf {
+        let plan = create_organization_plan(&root, std::slice::from_ref(&file), std::slice::from_ref(&analysis), naming, layout);
+        PathBuf::from(&plan.items[0].proposed_destination_path)
+    };
+
+    // Rename only: stays in its own folder, no new directories.
+    let p = dest("in_place", "subject_scene");
+    assert_eq!(p.parent().unwrap(), sub.as_path());
+    assert_ne!(p.file_name().unwrap(), "IMG_0042.jpg");
+
+    // Sort only: original name kept.
+    let p = dest("by_category", "original");
+    assert_eq!(p, root.join("Nature").join("Forest").join("IMG_0042.jpg"));
+
+    // One folder level.
+    assert_eq!(dest("category", "original").parent().unwrap(), root.join("Nature").as_path());
+
+    // Keep folders + keep names = nothing to do.
+    assert_eq!(dest("in_place", "original"), sub.join("IMG_0042.jpg"));
+}
+
+#[test]
+fn test_unanalyzed_files_can_be_left_alone() {
+    use crate::organization::changes::build_changes;
+    use crate::organization::folder_planner::PlanItemPreview;
+    use crate::storage::repository::Repository;
+
+    let root = std::env::temp_dir().join(format!("zorter_leave_{}", uuid::Uuid::new_v4()));
+    let repo = Repository::new(Some(root.join(".data"))).unwrap();
+    let items = vec![PlanItemPreview {
+        file_id: "x".into(),
+        original_name: "x.png".into(),
+        original_path: root.join("x.png").display().to_string(),
+        proposed_name: "x.png".into(),
+        proposed_destination_path: String::new(),
+        category: String::new(),
+        subcategory: String::new(),
+        action_type: "rename".into(),
+        thumbnail_url: None,
+        included: true,
+        is_analyzed: false,
+    }];
+    assert_eq!(build_changes(&root, &items, &repo, true).0.len(), 1);
+    assert!(build_changes(&root, &items, &repo, false).0.is_empty());
     fs::remove_dir_all(&root).unwrap();
 }

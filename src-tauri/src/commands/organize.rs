@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::core::app_state::AppState;
@@ -17,6 +17,20 @@ use crate::organization::folder_planner::create_organization_plan;
 use super::scan::index_directory;
 use super::{blocking, folder};
 
+/// User-chosen organization options. Missing fields fall back to settings.
+#[derive(Debug, Default, Deserialize)]
+pub struct PlanOptions {
+    /// `by_category`, `category`, `category_and_style`, `in_place`, `flat_rename`
+    pub layout: Option<String>,
+    /// `subject_scene`, `kebab-case`, `title_case`, `detailed`, `ai_suggested`, `original`
+    pub naming: Option<String>,
+    /// Move files without an analysis into `Needs-Review/` (default) or leave them.
+    pub move_unanalyzed: Option<bool>,
+}
+
+const LAYOUTS: &[&str] = &["by_category", "category", "category_and_style", "in_place", "flat_rename"];
+const NAMINGS: &[&str] = &["subject_scene", "kebab-case", "title_case", "detailed", "ai_suggested", "original"];
+
 #[derive(Serialize)]
 pub struct PlanReport {
     pub root: String,
@@ -26,13 +40,22 @@ pub struct PlanReport {
     pub ready: usize,
     pub review: usize,
     pub unchanged: usize,
+    /// Unanalyzed files left where they are (when not moved to Needs-Review/).
+    pub skipped_unanalyzed: usize,
     pub folders: Vec<FolderCount>,
     pub changes: Vec<PlannedChange>,
 }
 
 #[tauri::command]
-pub async fn plan_folder(dir: String, state: State<'_, AppState>) -> Result<PlanReport> {
+pub async fn plan_folder(dir: String, options: Option<PlanOptions>, state: State<'_, AppState>) -> Result<PlanReport> {
     let dir = folder(&dir)?;
+    let options = options.unwrap_or_default();
+    for (value, allowed, what) in [(&options.layout, LAYOUTS, "layout"), (&options.naming, NAMINGS, "naming")] {
+        if let Some(v) = value
+            && !allowed.contains(&v.as_str()) {
+                return Err(AppError::Validation(format!("Unknown {what} option: {v}")));
+            }
+    }
     let repo = state.repository.clone();
     blocking(move || {
         let files = index_directory(&repo, &dir, |_, _| {})?;
@@ -41,6 +64,10 @@ pub async fn plan_folder(dir: String, state: State<'_, AppState>) -> Result<Plan
         let analyzed = files.iter().filter(|f| r.get_analysis(&f.id).is_some()).count();
         let root_name = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| dir.display().to_string());
 
+        let layout = options.layout.clone().unwrap_or(settings.default_organization_behavior.clone());
+        let naming = options.naming.clone().unwrap_or(settings.default_naming_convention.clone());
+        let move_unanalyzed = options.move_unanalyzed.unwrap_or(true);
+        let unanalyzed = files.len() - analyzed;
         let (changes, unchanged) = if analyzed == 0 {
             (Vec::new(), 0)
         } else {
@@ -48,10 +75,10 @@ pub async fn plan_folder(dir: String, state: State<'_, AppState>) -> Result<Plan
                 &dir,
                 &files,
                 &r.get_all_analyses(),
-                &settings.default_naming_convention,
-                &settings.default_organization_behavior,
+                &naming,
+                &layout,
             );
-            build_changes(&dir, &plan.items, &r)
+            build_changes(&dir, &plan.items, &r, move_unanalyzed)
         };
         let ready = changes.iter().filter(|c| !c.uncertain).count();
         Ok(PlanReport {
@@ -62,6 +89,7 @@ pub async fn plan_folder(dir: String, state: State<'_, AppState>) -> Result<Plan
             ready,
             review: changes.len() - ready,
             unchanged,
+            skipped_unanalyzed: if move_unanalyzed { 0 } else { unanalyzed },
             folders: folder_counts(&changes),
             changes,
         })

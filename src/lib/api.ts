@@ -5,6 +5,7 @@ import type {
   AnalyzeStarted,
   AnalyzeSummary,
   Overview,
+  PlanOptions,
   PlanReport,
   PlannedChange,
   Progress,
@@ -23,7 +24,7 @@ export const api = {
   analyze: (dir: string, force: boolean) => invoke<AnalyzeSummary>('analyze_folder', { dir, force }),
   cancelAnalysis: () => invoke<boolean>('cancel_analysis'),
 
-  plan: (dir: string) => invoke<PlanReport>('plan_folder', { dir }),
+  plan: (dir: string, options: PlanOptions) => invoke<PlanReport>('plan_folder', { dir, options }),
   apply: (changes: PlannedChange[]) => invoke<{ organized: number }>('apply_changes', { changes }),
   exportPlan: (changes: PlannedChange[], rootName: string) =>
     invoke<string | null>('export_plan', { changes, rootName }),

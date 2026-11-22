@@ -101,6 +101,12 @@ export interface PlannedChange {
   hash: string;
 }
 
+export interface PlanOptions {
+  layout?: 'by_category' | 'category' | 'category_and_style' | 'in_place' | 'flat_rename';
+  naming?: 'subject_scene' | 'kebab-case' | 'title_case' | 'detailed' | 'ai_suggested' | 'original';
+  move_unanalyzed?: boolean;
+}
+
 export interface PlanReport {
   root: string;
   root_name: string;
@@ -109,6 +115,7 @@ export interface PlanReport {
   ready: number;
   review: number;
   unchanged: number;
+  skipped_unanalyzed: number;
   folders: { name: string; count: number }[];
   changes: PlannedChange[];
 }

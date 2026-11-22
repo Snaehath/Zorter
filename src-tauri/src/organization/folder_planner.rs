@@ -59,7 +59,11 @@ pub fn create_organization_plan(
         let (category, subcategory, proposed_name) = if let Some(analysis) = analysis_opt {
             let cat = clean_category_name(&analysis.category);
             let subcat = clean_category_name(&analysis.subcategory);
-            let name = generate_deterministic_filename(analysis, ext, naming_convention);
+            let name = if naming_convention == "original" {
+                file.current_name.clone()
+            } else {
+                generate_deterministic_filename(analysis, ext, naming_convention)
+            };
             (cat, subcat, name)
         } else {
             // Unanalyzed file fallback: clean random hashes/numbers if present
@@ -76,6 +80,9 @@ pub fn create_organization_plan(
                     .unwrap_or_else(|| "General".to_string());
                 target_root.join(&category).join(&style)
             }
+            // Rename only: every file stays in the folder it is already in.
+            "in_place" => orig_path.parent().unwrap_or(target_root).to_path_buf(),
+            "category" => target_root.join(&category),
             _ => target_root.join(&category).join(&subcategory), // "by_category"
         };
 

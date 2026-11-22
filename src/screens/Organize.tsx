@@ -17,9 +17,11 @@ import {
 } from 'lucide-react';
 import { api, errorText } from '../lib/api';
 import { useStore } from '../lib/storeContext';
-import { plural } from '../lib/format';
-import type { PlanReport, PlannedChange } from '../lib/types';
+import { baseName, plural } from '../lib/format';
+import { loadOptions, saveOptions } from '../lib/planOptions';
+import type { PlanOptions, PlanReport, PlannedChange } from '../lib/types';
 import { FolderBar } from '../components/FolderBar';
+import { OrganizeOptions } from '../components/OrganizeOptions';
 import { Button, Chip, Heading, Notice, Panel, SectionLabel, Thumb } from '../components/ui';
 import { cx } from '../lib/cx';
 
@@ -37,7 +39,7 @@ function ConfirmDialog({ c, busy, onCancel, onConfirm }: { c: Confirm; busy: boo
       <Panel className="animate-in w-full max-w-[440px] p-6">
         <div className="mb-1 text-[16px] font-semibold">{c.label}?</div>
         <p className="text-[13px] leading-relaxed text-dim">
-          {plural(c.changes.length, 'file')} will be renamed and moved into folders
+          {plural(c.changes.length, 'file')} will be renamed or moved
           {uncertain > 0 && `, including ${uncertain} unanalyzed into Needs-Review/`}. Nothing is overwritten, and you can
           undo this at any time.
         </p>
@@ -190,32 +192,42 @@ export function OrganizeScreen() {
   const [done, setDone] = useState<{ organized: number } | null>(null);
   const [undoing, setUndoing] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [options, setOptions] = useState<Required<PlanOptions>>(loadOptions);
 
   const load = useCallback(async () => {
     if (!folder) return;
     setLoading(true);
     setError(null);
     try {
-      setPlan(await api.plan(folder));
+      setPlan(await api.plan(folder, options));
     } catch (e) {
       setError(errorText(e));
     } finally {
       setLoading(false);
     }
-  }, [folder]);
+  }, [folder, options]);
 
-  // Initial plan. The screen is keyed by folder, so a new folder remounts it.
+  // (Re)build the plan whenever the options change. The screen is keyed by
+  // folder, so choosing another folder remounts it.
   useEffect(() => {
     if (!folder) return;
     let alive = true;
     api
-      .plan(folder)
+      .plan(folder, options)
       .then((p) => alive && setPlan(p), (e: unknown) => alive && setError(errorText(e)))
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
     };
-  }, [folder]);
+  }, [folder, options]);
+
+  const changeOptions = (o: Required<PlanOptions>) => {
+    saveOptions(o);
+    setLoading(true);
+    setError(null);
+    setNote(null);
+    setOptions(o);
+  };
 
   const ready = useMemo(() => plan?.changes.filter((c) => !c.uncertain) ?? [], [plan]);
 
@@ -315,12 +327,16 @@ export function OrganizeScreen() {
         </Panel>
       )}
 
+      {folder && !reviewing && (!plan || plan.analyzed > 0) && (
+        <OrganizeOptions value={options} root={plan?.root_name ?? baseName(folder)} disabled={applying} onChange={changeOptions} />
+      )}
+
       {plan && plan.analyzed > 0 && reviewing && (
-        <Review plan={plan} onBack={() => setReviewing(false)} onApply={(changes) => setConfirm({ changes, label: 'Apply selected changes' })} />
+        <Review key={plan.changes.length + options.layout + options.naming} plan={plan} onBack={() => setReviewing(false)} onApply={(changes) => setConfirm({ changes, label: 'Apply selected changes' })} />
       )}
 
       {plan && plan.analyzed > 0 && !reviewing && (
-        <>
+        <div className={cx('transition-opacity', loading && 'opacity-50')} aria-busy={loading}>
           <div className="mb-5 flex flex-wrap gap-3 text-[13px]">
             <Chip icon={CircleCheck} tone="ok">
               {plural(plan.analyzed, 'file')} analyzed
@@ -335,14 +351,19 @@ export function OrganizeScreen() {
             )}
             {plan.unchanged > 0 && (
               <Chip tone="muted">
-                <span className="text-dim">{plan.unchanged} already organized</span>
+                <span className="text-dim">{plan.unchanged} already match</span>
+              </Chip>
+            )}
+            {plan.skipped_unanalyzed > 0 && (
+              <Chip tone="muted">
+                <span className="text-dim">{plan.skipped_unanalyzed} unanalyzed left in place</span>
               </Chip>
             )}
           </div>
 
           {plan.changes.length === 0 ? (
             <Panel className="px-6 py-8 text-center text-ok">
-              <CircleCheck className="mx-auto mb-2" /> Everything here is already organized.
+              <CircleCheck className="mx-auto mb-2" /> Nothing to change — every file already matches these options.
             </Panel>
           ) : (
             <>
@@ -411,7 +432,7 @@ export function OrganizeScreen() {
               </Panel>
             </>
           )}
-        </>
+        </div>
       )}
 
       {confirm && <ConfirmDialog c={confirm} busy={applying} onCancel={() => setConfirm(null)} onConfirm={() => void apply()} />}

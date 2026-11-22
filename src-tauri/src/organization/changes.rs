@@ -33,7 +33,14 @@ pub struct FolderCount {
 }
 
 /// Returns `(changes, already_in_place_count)`. Ready changes come first.
-pub fn build_changes(root: &Path, items: &[PlanItemPreview], repo: &Repository) -> (Vec<PlannedChange>, usize) {
+/// With `move_unanalyzed == false`, files without an analysis are left untouched
+/// (and not counted as changes).
+pub fn build_changes(
+    root: &Path,
+    items: &[PlanItemPreview],
+    repo: &Repository,
+    move_unanalyzed: bool,
+) -> (Vec<PlannedChange>, usize) {
     let mut taken: HashSet<String> = items
         .iter()
         .filter(|i| i.is_analyzed)
@@ -44,6 +51,9 @@ pub fn build_changes(root: &Path, items: &[PlanItemPreview], repo: &Repository) 
     let mut unchanged = 0;
 
     for item in items {
+        if !item.is_analyzed && !move_unanalyzed {
+            continue;
+        }
         let src = PathBuf::from(&item.original_path);
         let dest = if item.is_analyzed {
             PathBuf::from(&item.proposed_destination_path)
