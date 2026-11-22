@@ -24,10 +24,12 @@ pub fn run() {
         )
         .invoke_handler(tauri::generate_handler![
             commands::system::get_overview,
+            commands::system::set_vision_model,
             commands::system::pick_directory,
             commands::system::get_thumbnail,
             commands::system::reveal_in_folder,
             commands::scan::scan_folder,
+            commands::analyze::analyze_preview,
             commands::analyze::analyze_folder,
             commands::analyze::cancel_analysis,
             commands::organize::plan_folder,

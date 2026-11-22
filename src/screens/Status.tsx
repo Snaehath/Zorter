@@ -5,6 +5,8 @@ import { useStore } from '../lib/storeContext';
 import { bytes, plural, relativeTime } from '../lib/format';
 import { Badge, Button, Heading, Notice, Panel, SectionLabel } from '../components/ui';
 
+const COLS = 'grid grid-cols-[150px_minmax(0,1fr)_100px_120px] gap-3 px-5';
+
 function Row({ icon: Icon, label, children }: { icon: LucideIcon; label: string; children: ReactNode }) {
   return (
     <div className="grid grid-cols-[22px_150px_1fr] items-center gap-2 py-1.5 text-[14px]">
@@ -16,7 +18,9 @@ function Row({ icon: Icon, label, children }: { icon: LucideIcon; label: string;
 }
 
 export function StatusScreen() {
-  const { overview: o, overviewError, refreshOverview } = useStore();
+  const { overview: o, overviewError, refreshOverview, analyze } = useStore();
+  const [switching, setSwitching] = useState(false);
+  const analyzing = analyze.running;
   const [refreshing, setRefreshing] = useState(false);
   const [undoing, setUndoing] = useState(false);
   const [message, setMessage] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
@@ -44,6 +48,20 @@ export function StatusScreen() {
     }
   };
 
+  const chooseVision = async (model: string) => {
+    if (model === o?.models.find((m) => m.kind === 'Vision')?.name) return;
+    setSwitching(true);
+    try {
+      await api.setVisionModel(model);
+      setMessage({ tone: 'ok', text: `Now using ${model} for image analysis. Existing results are kept; use “Re-analyze all” to refresh them.` });
+    } catch (e) {
+      setMessage({ tone: 'bad', text: errorText(e) });
+    } finally {
+      setSwitching(false);
+      void refreshOverview();
+    }
+  };
+
   const ready = o?.models.filter((m) => m.installed).length ?? 0;
 
   return (
@@ -58,25 +76,45 @@ export function StatusScreen() {
 
       <SectionLabel className="mb-2">MODELS</SectionLabel>
       <Panel className="mb-6 overflow-hidden">
-        <div className="grid grid-cols-[150px_1fr_110px_100px_120px] gap-3 border-b border-line-soft px-5 py-2.5 text-[12px] text-faint">
+        <div className={`${COLS} border-b border-line-soft py-2.5 text-[12px] text-faint`}>
           <span>TYPE</span>
           <span>MODEL</span>
-          <span>PROVIDER</span>
           <span>SIZE</span>
           <span>STATUS</span>
         </div>
-        {(o?.models ?? []).map((m) => (
-          <div key={m.kind} className="grid grid-cols-[150px_1fr_110px_100px_120px] items-center gap-3 border-b border-line-soft px-5 py-3 text-[14px] last:border-b-0">
-            <span className="flex items-center gap-2.5">
-              {m.kind === 'Vision' ? <Eye size={16} className="text-accent" /> : <Box size={16} className="text-accent" />}
-              {m.kind}
-            </span>
-            <span className="truncate">{m.name}</span>
-            <span className="text-dim">Ollama</span>
-            <span className="text-dim">{m.size_bytes ? bytes(m.size_bytes) : '—'}</span>
-            {!o?.online ? <Badge tone="bad">Offline</Badge> : m.installed ? <Badge tone="ok">Ready</Badge> : <Badge tone="warn">Missing</Badge>}
-          </div>
-        ))}
+        {o &&
+          o.models.map((m) => {
+            const isVision = m.kind === 'Vision';
+            return (
+              <div key={m.kind} className={`${COLS} items-center border-b border-line-soft py-3 text-[14px] last:border-b-0`}>
+                <span className="flex items-center gap-2.5">
+                  {isVision ? <Eye size={16} className="text-accent" /> : <Box size={16} className="text-accent" />}
+                  {m.kind}
+                </span>
+                {isVision ? (
+                  <select
+                    value={m.name}
+                    onChange={(e) => void chooseVision(e.target.value)}
+                    disabled={switching || analyzing}
+                    title={analyzing ? 'Wait for the current analysis to finish' : 'Vision model used for analysis'}
+                    className="w-fit max-w-full cursor-pointer truncate rounded-md border border-line bg-panel px-2.5 py-1 text-[14px] text-text outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {o.vision_models.map((v, i) => (
+                      <option key={v.name} value={v.name}>
+                        {v.name} ({i === 0 ? 'default' : 'backup'}){o.online && !v.installed ? ' · not installed' : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="truncate">{m.name}</span>
+                )}
+                <span className="text-dim">{m.size_bytes ? bytes(m.size_bytes) : '—'}</span>
+                <span>
+                  {!o.online ? <Badge tone="bad">Offline</Badge> : m.installed ? <Badge tone="ok">Ready</Badge> : <Badge tone="warn">Missing</Badge>}
+                </span>
+              </div>
+            );
+          })}
         {!o && <div className="animate-pulse px-5 py-4 text-dim">Checking…</div>}
       </Panel>
       {o?.online &&
@@ -84,7 +122,8 @@ export function StatusScreen() {
           .filter((m) => !m.installed)
           .map((m) => (
             <div key={m.name} className="-mt-4 mb-6 text-[13px] text-dim">
-              Install the {m.kind.toLowerCase()} model with <span className="text-text">ollama pull {m.name}</span>
+              Install {m.name} with <span className="text-text">ollama pull {m.name}</span>
+              {m.kind === 'Vision' && ', or choose another vision model above'}
             </div>
           ))}
 

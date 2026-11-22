@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, errorText, events } from './api';
+import { recordAnalysisSpeed } from './estimate';
 import type { Overview } from './types';
 import { StoreContext, type AnalyzeState, type ScanState, type Screen, type Store } from './storeContext';
 
@@ -107,6 +108,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setAnalyze({ ...idleAnalyze, running: true });
       try {
         const summary = await api.analyze(dir, force);
+        recordAnalysisSpeed(summary.analyzed, summary.elapsed_ms);
         setAnalyze((s) => ({ ...s, running: false, cancelling: false, summary }));
       } catch (e) {
         setAnalyze((s) => ({ ...s, running: false, cancelling: false, error: errorText(e) }));

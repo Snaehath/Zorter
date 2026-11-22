@@ -1,8 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ArrowRight, Box, CircleX, Clock, Cpu, File, FileText, Play, Sparkles, Square } from 'lucide-react';
+import { ArrowRight, Box, CircleCheck, CircleX, Clock, Cpu, File, FileText, Play, RotateCcw, Sparkles, Square } from 'lucide-react';
 import { useStore } from '../lib/storeContext';
-import { duration } from '../lib/format';
-import type { AnalyzeFileEvent } from '../lib/types';
+import { duration, plural } from '../lib/format';
+import { api, errorText } from '../lib/api';
+import { estimateFor } from '../lib/estimate';
+import type { AnalyzeFileEvent, AnalyzePreview } from '../lib/types';
 import { FolderBar } from '../components/FolderBar';
 import { Button, Heading, Notice, Panel, SegmentBar, Tag, Thumb } from '../components/ui';
 import { cx } from '../lib/cx';
@@ -113,10 +115,89 @@ function FeedRow({ e }: { e: AnalyzeFileEvent }) {
   );
 }
 
+/** Decide what to analyze: only what's left (default) or everything again. */
+function StartPanel({
+  preview,
+  onStart,
+}: {
+  preview: { data: AnalyzePreview | null; error: string | null } | null;
+  onStart: (force: boolean) => void;
+}) {
+  if (!preview) {
+    return <Panel className="mb-5 animate-pulse px-5 py-4 text-[13px] text-dim">Checking this folder…</Panel>;
+  }
+  if (preview.error || !preview.data) {
+    return (
+      <div className="mb-5">
+        <Notice tone="bad" title="Couldn't read this folder">
+          {preview.error}
+        </Notice>
+      </div>
+    );
+  }
+  const { total, analyzed, remaining } = preview.data;
+  if (total === 0) {
+    return <Panel className="mb-5 px-5 py-4 text-[13px] text-dim">No supported images (PNG, JPG, WebP, BMP) in this folder.</Panel>;
+  }
+  const hint = (n: number) => estimateFor(n);
+  const label = (text: string, n: number) => (hint(n) ? `${text} · ${hint(n)}` : text);
+
+  return (
+    <Panel className="animate-in mb-5 flex flex-wrap items-center gap-4 px-5 py-4">
+      <div className="min-w-[220px] flex-1">
+        {remaining === 0 ? (
+          <div className="flex items-center gap-2 font-semibold text-ok">
+            <CircleCheck size={17} /> All {plural(total, 'image')} are analyzed
+          </div>
+        ) : analyzed === 0 ? (
+          <div className="font-semibold">{plural(total, 'image')} to analyze</div>
+        ) : (
+          <div className="font-semibold">
+            {remaining.toLocaleString()} of {plural(total, 'image')} left to analyze
+          </div>
+        )}
+        <div className="mt-0.5 text-[12px] text-dim">
+          {remaining === 0
+            ? 'Nothing to do. Re-analyze only if you changed the vision model or want fresh results.'
+            : analyzed > 0
+              ? `${analyzed.toLocaleString()} already have results from an earlier run — skipping them saves time and GPU.`
+              : 'Each image is described, tagged and named by your local vision model.'}
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {remaining > 0 && (
+          <Button variant="primary" icon={Play} onClick={() => onStart(false)}>
+            {label(analyzed > 0 ? `Analyze remaining ${remaining.toLocaleString()}` : `Analyze ${total.toLocaleString()}`, remaining)}
+          </Button>
+        )}
+        {analyzed > 0 && (
+          <Button icon={RotateCcw} onClick={() => onStart(true)}>
+            {label(`Re-analyze all ${total.toLocaleString()}`, total)}
+          </Button>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
 export function AnalyzeScreen() {
   const { folder, analyze: s, startAnalyze, cancelAnalyze, overview, go } = useStore();
-  const [force, setForce] = useState(false);
   const now = useNow(s.running);
+  const [preview, setPreview] = useState<{ dir: string; data: AnalyzePreview | null; error: string | null } | null>(null);
+
+  // Count analyzed vs. remaining images whenever the folder changes or a run ends.
+  useEffect(() => {
+    if (!folder || s.running) return;
+    let alive = true;
+    api.analyzePreview(folder).then(
+      (data) => alive && setPreview({ dir: folder, data, error: null }),
+      (e: unknown) => alive && setPreview({ dir: folder, data: null, error: errorText(e) }),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [folder, s.running]);
+  const current = preview?.dir === folder ? preview : null;
 
   const total = s.started?.total ?? 0;
   const ratio = total > 0 ? s.processed / total : s.summary ? 1 : 0;
@@ -130,27 +211,14 @@ export function AnalyzeScreen() {
       <Heading icon={Sparkles} title="AI Analysis" />
 
       <FolderBar disabled={s.running}>
-        {s.running ? (
+        {s.running && (
           <Button variant="danger" icon={Square} onClick={() => void cancelAnalyze()} busy={s.cancelling}>
             {s.cancelling ? 'Stopping…' : 'Stop'}
-          </Button>
-        ) : (
-          <Button variant="primary" icon={Play} onClick={() => void startAnalyze(force)} disabled={!folder}>
-            Analyze
           </Button>
         )}
       </FolderBar>
 
-      <label className="-mt-2 mb-5 flex w-fit cursor-pointer items-center gap-2 text-[13px] text-dim">
-        <input
-          type="checkbox"
-          checked={force}
-          disabled={s.running}
-          onChange={(e) => setForce(e.target.checked)}
-          className="accent-[#22d3ee]"
-        />
-        Re-analyze files that already have results
-      </label>
+      {folder && !s.running && <StartPanel preview={current} onStart={(force) => void startAnalyze(force)} />}
 
       <Panel className="mb-5 grid grid-cols-2 divide-x divide-line-soft px-1 py-3 text-[13px]">
         <div className="space-y-1.5 px-5">
@@ -188,11 +256,7 @@ export function AnalyzeScreen() {
         </div>
       )}
 
-      {!hasRun && (
-        <Panel className="px-6 py-10 text-center text-dim">
-          {folder ? 'Press Analyze to describe the images in this folder with your local AI model.' : 'Choose a folder to get started.'}
-        </Panel>
-      )}
+      {!hasRun && !folder && <Panel className="px-6 py-10 text-center text-dim">Choose a folder to get started.</Panel>}
 
       {s.running && !s.started && (
         <Panel className="mb-5 px-6 py-5">
@@ -242,7 +306,7 @@ export function AnalyzeScreen() {
             </Notice>
           ) : s.summary.total === 0 ? (
             <Notice tone="ok" title="Everything here is already analyzed">
-              Tick “Re-analyze” above to run it again.
+              Use “Re-analyze all” above to run it again.
             </Notice>
           ) : (
             <Notice tone="ok" title={`Analyzed ${s.summary.analyzed} file${s.summary.analyzed === 1 ? '' : 's'}`}>

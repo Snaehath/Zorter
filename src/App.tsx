@@ -1,7 +1,7 @@
 import { Activity, FolderSearch, House, Layers, Search, Sparkles, type LucideIcon } from 'lucide-react';
 import { StoreProvider } from './lib/store';
 import { useStore, type Screen } from './lib/storeContext';
-import { Badge, Logo } from './components/ui';
+import { Logo } from './components/ui';
 import { cx } from './lib/cx';
 import { HomeScreen } from './screens/Home';
 import { ScanScreen } from './screens/Scan';
@@ -20,7 +20,7 @@ const NAV: { id: Screen; label: string; icon: LucideIcon }[] = [
 ];
 
 function Sidebar() {
-  const { screen, go, overview, analyze, scan } = useStore();
+  const { screen, go, analyze, scan } = useStore();
   const busy: Partial<Record<Screen, boolean>> = { analyze: analyze.running, scan: scan.running };
   return (
     <aside className="flex w-[212px] shrink-0 flex-col border-r border-line-soft bg-panel/60">
@@ -47,17 +47,6 @@ function Sidebar() {
           </button>
         ))}
       </nav>
-      <div className="mt-auto space-y-1.5 border-t border-line-soft px-5 py-4 text-[12px]">
-        <div className="flex items-center justify-between">
-          <span className="text-faint">Ollama</span>
-          {overview ? (
-            <Badge tone={overview.online ? 'ok' : 'bad'}>{overview.online ? 'Online' : 'Offline'}</Badge>
-          ) : (
-            <Badge tone="muted">Checking</Badge>
-          )}
-        </div>
-        <div className="text-faint">v{overview?.version ?? '…'}</div>
-      </div>
     </aside>
   );
 }

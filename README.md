@@ -17,10 +17,10 @@ Nothing is uploaded anywhere.
 ## Features
 
 - **Scan** a folder recursively: image / document counts, new vs. already indexed files, and exact duplicates (BLAKE3).
-- **Analyze** every image with a local vision model — description, category, style, lighting, colors, tags and a clean suggested filename — with a live preview of each file. Stop at any time; finished results are kept and the next run resumes.
+- **Analyze** every image with a local vision model — description, category, style, lighting, colors, tags and a clean suggested filename — with a live preview of each file. Before each run Zorter shows how many images are already done and offers to analyze only the remaining ones (with a time estimate) or re-analyze everything. Stop at any time; finished results are kept.
 - **Organize** your way with a reviewable plan: choose the folder structure (or no new folders at all), the naming style (or keep the original names), and what happens to files that weren't analyzed. Then apply all, review file-by-file, exclude uncertain files, or export the plan as JSON. Moves never overwrite anything, a failure part-way rolls the whole batch back, and every organization can be undone.
 - **Search** by meaning ("dark cyberpunk city wallpapers") using local embeddings, with keyword fallback when the search index isn't available.
-- **Status** of the models, index, storage and operation history.
+- **Status** of the models, index, storage and operation history. Switch the vision model here: MiniCPM-V 4.6 is the default, Ministral 3 is the backup.
 
 | AI analysis | Organization plan | Semantic search |
 | --- | --- | --- |
@@ -29,10 +29,11 @@ Nothing is uploaded anywhere.
 ## Requirements
 
 - Windows 10 or 11 (64-bit). WebView2 is preinstalled on Windows 11; the installer fetches it on Windows 10 if needed.
-- [Ollama](https://ollama.com) running locally, with the two models Zorter uses:
+- [Ollama](https://ollama.com) running locally, with a vision model and the embedding model:
 
   ```bash
-  ollama pull ministral-3:3b          # vision: describes and names images
+  ollama pull minicpm-v4.6            # vision (default): describes and names images
+  ollama pull ministral-3:3b          # vision (optional backup)
   ollama pull embeddinggemma-2:270m   # embeddings: powers semantic search
   ```
 
@@ -130,8 +131,7 @@ The Tauri CLI downloads NSIS and WiX automatically on first build.
 ### Releasing a new version
 
 1. Bump `version` in `package.json` and `src-tauri/Cargo.toml` (`tauri.conf.json` reads it from `package.json`).
-2. Move the `Unreleased` notes in `CHANGELOG.md` under the new version.
-3. Run `npx tauri build`, tag the commit (`git tag v0.2.0`) and attach both installers to a GitHub release.
+2. Run `npx tauri build`, tag the commit (`git tag v0.2.0`) and attach both installers to a GitHub release.
 
 Zorter follows [Semantic Versioning](https://semver.org/). It stays at `0.x` until the on-disk index format is stable and it has been used on real libraries; `1.0.0` marks that commitment.
 

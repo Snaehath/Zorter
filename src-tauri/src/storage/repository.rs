@@ -8,9 +8,14 @@ use crate::filesystem::operations::OperationJournalEntry;
 use crate::storage::json_store::{append_jsonl, read_json_file, write_json_atomic};
 use crate::storage::recovery::recover_or_load;
 
+/// Vision models Zorter offers. The first one is the default; the rest are
+/// alternatives the user can switch to from the Status screen.
+pub const VISION_MODELS: [&str; 2] = ["minicpm-v4.6:latest", "ministral-3:3b"];
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AppSettings {
-    pub preferred_vision_model: String,
+    pub vision_model: String,
     pub preferred_embedding_model: String,
     pub default_naming_convention: String, // "clean_snake_case", "kebab-case", "title_case"
     pub default_organization_behavior: String, // "by_category", "flat_rename", "category_and_style"
@@ -24,7 +29,7 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            preferred_vision_model: "ministral-3:3b".to_string(),
+            vision_model: VISION_MODELS[0].to_string(),
             preferred_embedding_model: "embeddinggemma-2:270m".to_string(),
             default_naming_convention: "subject_scene".to_string(),
             default_organization_behavior: "by_category".to_string(),
@@ -209,6 +214,11 @@ impl Repository {
 
     pub fn get_settings(&self) -> AppSettings {
         self.settings.clone()
+    }
+
+    pub fn set_vision_model(&mut self, model: &str) -> Result<()> {
+        self.settings.vision_model = model.to_string();
+        write_json_atomic(&self.base_dir.join("config").join("settings.json"), &self.settings)
     }
 
 

@@ -82,6 +82,7 @@ impl OllamaClient {
                     || name_lower.contains("llava")
                     || name_lower.contains("qwen")
                     || name_lower.contains("ministral")
+                    || name_lower.contains("minicpm")
                     || name_lower.contains("gemma")
                     || name_lower.contains("fable")
                     || name_lower.contains("granite");

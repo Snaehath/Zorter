@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   AnalyzeFileEvent,
+  AnalyzePreview,
   AnalyzeStarted,
   AnalyzeSummary,
   Overview,
@@ -15,12 +16,14 @@ import type {
 
 export const api = {
   overview: () => invoke<Overview>('get_overview'),
+  setVisionModel: (model: string) => invoke<void>('set_vision_model', { model }),
   pickDirectory: () => invoke<string | null>('pick_directory'),
   thumbnail: (path: string, hash: string) => invoke<string | null>('get_thumbnail', { path, hash }),
   reveal: (path: string) => invoke<void>('reveal_in_folder', { path }),
 
   scan: (dir: string) => invoke<ScanReport>('scan_folder', { dir }),
 
+  analyzePreview: (dir: string) => invoke<AnalyzePreview>('analyze_preview', { dir }),
   analyze: (dir: string, force: boolean) => invoke<AnalyzeSummary>('analyze_folder', { dir, force }),
   cancelAnalysis: () => invoke<boolean>('cancel_analysis'),
 

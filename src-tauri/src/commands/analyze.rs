@@ -31,6 +31,31 @@ pub struct AnalyzeSummary {
     pub elapsed_ms: u128,
 }
 
+/// How much of a folder is already analyzed, so the UI can offer
+/// "analyze the remaining files" instead of redoing everything.
+#[derive(Serialize)]
+pub struct AnalyzePreview {
+    /// Unique images (byte-identical copies count once).
+    pub total: usize,
+    pub analyzed: usize,
+    /// Never analyzed, including files that failed in an earlier run.
+    pub remaining: usize,
+}
+
+#[tauri::command]
+pub async fn analyze_preview(dir: String, state: State<'_, AppState>) -> Result<AnalyzePreview> {
+    let dir = folder(&dir)?;
+    let repo = state.repository.clone();
+    blocking(move || {
+        let files = index_directory(&repo, &dir, |_, _| {})?;
+        let ids: HashSet<&str> = files.iter().map(|f| f.id.as_str()).collect();
+        let r = repo.lock().unwrap();
+        let analyzed = ids.iter().filter(|id| r.get_analysis(id).is_some()).count();
+        Ok(AnalyzePreview { total: ids.len(), analyzed, remaining: ids.len() - analyzed })
+    })
+    .await
+}
+
 #[tauri::command]
 pub fn cancel_analysis(state: State<'_, AppState>) -> bool {
     state.job_manager.cancel_job(JOB_ID)
@@ -58,9 +83,9 @@ pub async fn analyze_folder(
         }
         let installed = ollama.fetch_models().unwrap_or_default();
         let settings = repo.lock().unwrap().get_settings();
-        let model = settings.preferred_vision_model.clone();
+        let model = settings.vision_model.clone();
         if !model_installed(&installed, &model) {
-            return Err(AppError::Model(format!("Vision model '{model}' is not installed. Run `ollama pull {model}`.")));
+            return Err(AppError::Model(format!("Vision model '{model}' is not installed. Run `ollama pull {model}`, or pick another vision model in Status.")));
         }
         let embed_model = Some(settings.preferred_embedding_model.clone()).filter(|m| model_installed(&installed, m));
 

@@ -12,6 +12,7 @@ export interface Overview {
   endpoint: string;
   online: boolean;
   models: ModelStatus[];
+  vision_models: ModelStatus[];
   files: number;
   analyzed: number;
   searchable: number;
@@ -78,6 +79,12 @@ export interface AnalyzeFileEvent {
   analysis: FileAnalysis | null;
   proposed_name: string | null;
   error: string | null;
+}
+
+export interface AnalyzePreview {
+  total: number;
+  analyzed: number;
+  remaining: number;
 }
 
 export interface AnalyzeSummary {
